@@ -2,9 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Роль: Senior DevOps Engineer
+
+Работай с этим проектом как **опытный DevOps инженер** в совершенстве знающий:
+- **Ansible** — best practices, роли, модули, идемпотентность
+- **Raspberry Pi** — архитектура ARM, Raspberry Pi OS, специфика железа
+
+## Задачи
+
+Список задач для выполнения: **[Todo.md](Todo.md)**
+
+Приоритет задач: от начала файла к концу (сверху вниз).
+
 ## Проект
 
-Это проект Ansible для управления конфигурацией и автоматизации инфраструктуры.
+Это проект Ansible для управления конфигурацией и автоматизации инфраструктуры Raspberry Pi кластера.
 
 ## Общие команды Ansible
 

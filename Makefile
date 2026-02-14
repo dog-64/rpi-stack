@@ -1,4 +1,4 @@
-.PHONY: help ping info update setup list graph shell reboot check clean locale
+.PHONY: help ping info update setup list graph shell reboot check clean locale todo
 
 # Подавление предупреждений Python
 export PYTHONWARNINGS=ignore::DeprecationWarning
@@ -26,6 +26,9 @@ setup: ## Базовая настройка кластера
 
 locale: ## Настроить русскую локаль (ru_RU.UTF-8) на всех хостах
 	ansible-playbook fix-locale.yml
+
+todo: ## Открыть файл с задачами
+	@cat Todo.md
 
 list: ## Список всех хостов
 	ansible-inventory --list
