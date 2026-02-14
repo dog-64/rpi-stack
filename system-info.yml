@@ -1,0 +1,42 @@
+---
+- name: Сбор информации о системе
+  hosts: active
+  gather_facts: yes
+
+  tasks:
+    - name: Получить температуру CPU
+      command: vcgencmd measure_temp
+      register: cpu_temp
+      changed_when: false
+
+    - name: Получить информацию о памяти
+      command: free -h
+      register: memory_info
+      changed_when: false
+
+    - name: Получить информацию о диске
+      command: df -h /
+      register: disk_info
+      changed_when: false
+
+    - name: Показать сводную информацию
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          Хост: {{ inventory_hostname }} ({{ ansible_host }})
+          ═══════════════════════════════════════════════════════════
+          Модель: {{ model }}
+          Память: {{ memory }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Ядро: {{ ansible_kernel }}
+          Архитектура: {{ ansible_architecture }}
+          Uptime: {{ ansible_uptime_seconds // 86400 }} дней {{ (ansible_uptime_seconds % 86400) // 3600 }} часов
+
+          Температура CPU: {{ cpu_temp.stdout }}
+
+          Память:
+          {{ memory_info.stdout }}
+
+          Диск:
+          {{ disk_info.stdout }}
+          ═══════════════════════════════════════════════════════════

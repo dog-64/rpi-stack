@@ -1,0 +1,76 @@
+---
+all:
+  children:
+    # Активные хосты в сети
+    active:
+      hosts:
+        leha:
+          ansible_host: 10.0.1.104
+          hostname: p104
+          model: "Raspberry Pi 5"
+          memory: "8GB"
+          services:
+            - "Raspberry Pi Connect"
+
+        sema:
+          ansible_host: 10.0.1.33
+          hostname: p33
+          model: "Raspberry Pi 5"
+          memory: "8GB"
+          services:
+            - "Raspberry Pi Connect"
+
+        motya:
+          ansible_host: 10.0.1.56
+          hostname: p56
+          model: "Raspberry Pi 4"
+          memory: "8GB"
+          services:
+            - "Raspberry Pi Connect"
+
+        osya:
+          ansible_host: 10.0.1.75
+          hostname: p75
+          model: "Raspberry Pi 4"
+          memory: "8GB"
+          services:
+            - "Raspberry Pi Connect"
+
+    # Неактивные/планируемые хосты
+    inactive:
+      hosts:
+        vitl:
+          # ansible_host: не назначен
+          model: "Raspberry Pi 4"
+          memory: "4GB"
+          notes: "Ожидает корпус, нет порта на eth хабе"
+
+    # Группировка по моделям
+    pi5:
+      hosts:
+        leha:
+        sema:
+
+    pi4_8gb:
+      hosts:
+        motya:
+        osya:
+
+    pi4_4gb:
+      hosts:
+        vitl:
+
+    # Группировка по памяти
+    high_memory:
+      children:
+        pi5:
+        pi4_8gb:
+
+    low_memory:
+      children:
+        pi4_4gb:
+
+  vars:
+    ansible_user: dog
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

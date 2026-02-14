@@ -1,0 +1,87 @@
+---
+- name: Базовая настройка Raspberry Pi кластера
+  hosts: active
+  become: yes
+
+  tasks:
+    - name: Обновить список пакетов
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Разблокировать dpkg если заблокирован
+      shell: |
+        if [ -f /var/lib/dpkg/lock-frontend ]; then
+          pid=$(fuser /var/lib/dpkg/lock-frontend 2>/dev/null | grep -o '[0-9]*' | head -1)
+          if [ -n "$pid" ]; then
+            kill $pid 2>/dev/null || true
+            sleep 1
+          fi
+        fi
+        rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+      changed_when: false
+      failed_when: false
+
+    - name: Установить основные пакеты
+      apt:
+        name:
+          - vim
+          - htop
+          - git
+          - curl
+          - wget
+          - net-tools
+          - iotop
+          - iftop
+          - rsync
+          - screen
+          - mc
+          - tmux
+          - python3-pip
+        state: present
+
+    - name: Настроить hostname
+      hostname:
+        name: "{{ hostname }}"
+
+    - name: Добавить hostname в /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "127.0.1.1 {{ hostname }}"
+        state: present
+
+    - name: Создать файл со списком хостов кластера
+      blockinfile:
+        path: /etc/hosts
+        block: |
+          # Raspberry Pi Cluster
+          10.0.1.104  p104 leha
+          10.0.1.33   p33  sema
+          10.0.1.56   p56  motya
+          10.0.1.75   p75  osya
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - PI CLUSTER"
+
+    - name: Настроить timezone
+      timezone:
+        name: Europe/Moscow
+
+    - name: Включить автоматические обновления безопасности
+      apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Создать директорию для скриптов
+      file:
+        path: /opt/cluster-scripts
+        state: directory
+        mode: '0755'
+
+    - name: Настроить лимиты для системы
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { key: 'vm.swappiness', value: '10' }
+        - { key: 'fs.file-max', value: '65535' }
