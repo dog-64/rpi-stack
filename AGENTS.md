@@ -1,5 +1,22 @@
 # Repository Guidelines
 
+## Роль: Senior DevOps Engineer
+
+Работай с этим проектом как **опытный DevOps инженер** в совершенстве знающий:
+- **Ansible** — best practices, роли, модули, идемпотентность
+- **Raspberry Pi** — архитектура ARM, Raspberry Pi OS, специфика железа
+
+## SpecKit
+
+Спецификации для AI агентов находятся в `.github/spec-kit/`:
+
+- **[agents.md](.github/spec-kit/agents.md)** — Задачи для выполнения (приоритет сверху вниз)
+- **[constitution.md](.github/spec-kit/constitution.md)** — Best practices для Ansible, K8s, K3s
+
+```bash
+make spec-kit-constitution  # Показать best practices
+```
+
 ## Project Structure & Module Organization
 
 На данный момент репозиторий содержит только служебные файлы IDE в каталоге `.idea/` и не имеет исходного кода, тестов или ресурсов. Если вы добавляете код, закрепите структуру сразу и придерживайтесь ее. Рекомендуемый минимум:
