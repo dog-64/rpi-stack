@@ -2,9 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+- всегда проверяй что получилось в результате своих изменений
+- никогда не ври
+
+## Роль: Senior DevOps Engineer
+
+Работай с этим проектом как **опытный DevOps инженер** в совершенстве знающий:
+- **Ansible** — best practices, роли, модули, идемпотентность
+- **Raspberry Pi** — архитектура ARM, Raspberry Pi OS, специфика железа
+
+## SpecKit
+
+Спецификации для AI агентов находятся в `.github/spec-kit/`:
+
+- **[agents.md](.github/spec-kit/agents.md)** — Задачи для выполнения (приоритет сверху вниз)
+- **[constitution.md](.github/spec-kit/constitution.md)** — Best practices для Ansible, K8s, K3s
+
+```bash
+make spec-kit-constitution  # Показать best practices
+```
+
 ## Проект
 
-Это проект Ansible для управления конфигурацией и автоматизации инфраструктуры.
+Это проект Ansible для управления конфигурацией и автоматизации инфраструктуры Raspberry Pi кластера.
 
 ## Общие команды Ansible
 

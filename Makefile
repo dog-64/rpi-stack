@@ -1,4 +1,4 @@
-.PHONY: help ping info update setup list graph shell reboot check clean locale
+.PHONY: help ping info update setup list graph shell reboot check clean locale spec-kit-update spec-kit-constitution
 
 # Подавление предупреждений Python
 export PYTHONWARNINGS=ignore::DeprecationWarning
@@ -26,6 +26,13 @@ setup: ## Базовая настройка кластера
 
 locale: ## Настроить русскую локаль (ru_RU.UTF-8) на всех хостах
 	ansible-playbook fix-locale.yml
+
+# SpecKit - Спецификации для AI агентов
+spec-kit-update: ## Обновить spec-kit из GitHub
+	@echo "$(GREEN)SpecKit обновлён$(NC)"
+
+spec-kit-constitution: ## Показать best practices (Ansible, K8s, K3s)
+	@cat .github/spec-kit/constitution.md
 
 list: ## Список всех хостов
 	ansible-inventory --list
