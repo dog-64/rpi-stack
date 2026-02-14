@@ -65,6 +65,48 @@
       timezone:
         name: Europe/Moscow
 
+    - name: Настроить локаль ru_RU.UTF-8
+      lineinfile:
+        path: /etc/locale.gen
+        regexp: '^# ru_RU\.UTF-8 UTF-8'
+        line: 'ru_RU.UTF-8 UTF-8'
+        state: present
+
+    - name: Раскомментировать en_US.UTF-8 в /etc/locale.gen
+      lineinfile:
+        path: /etc/locale.gen
+        regexp: '^# en_US\.UTF-8 UTF-8'
+        line: 'en_US.UTF-8 UTF-8'
+        state: present
+
+    - name: Сгенерировать локали
+      command: locale-gen
+      changed_when: false
+
+    - name: Настроить локаль по умолчанию
+      command: update-locale LANG=ru_RU.UTF-8
+      changed_when: false
+
+    - name: Настроить /etc/default/locale
+      copy:
+        dest: /etc/default/locale
+        content: |
+          LANG=ru_RU.UTF-8
+          LANGUAGE=ru
+          LC_CTYPE=ru_RU.UTF-8
+          LC_NUMERIC=ru_RU.UTF-8
+          LC_TIME=ru_RU.UTF-8
+          LC_COLLATE=ru_RU.UTF-8
+          LC_MONETARY=ru_RU.UTF-8
+          LC_MESSAGES=ru_RU.UTF-8
+          LC_PAPER=ru_RU.UTF-8
+          LC_NAME=ru_RU.UTF-8
+          LC_ADDRESS=ru_RU.UTF-8
+          LC_TELEPHONE=ru_RU.UTF-8
+          LC_MEASUREMENT=ru_RU.UTF-8
+          LC_IDENTIFICATION=ru_RU.UTF-8
+        mode: '0644'
+
     - name: Включить автоматические обновления безопасности
       apt:
         name: unattended-upgrades
@@ -85,3 +127,9 @@
       loop:
         - { key: 'vm.swappiness', value: '10' }
         - { key: 'fs.file-max', value: '65535' }
+
+    - name: Перезагрузить хосты для применения всех настроек
+      reboot:
+        reboot_timeout: 600
+        connect_timeout: 15
+        test_command: whoami

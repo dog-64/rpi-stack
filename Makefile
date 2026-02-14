@@ -1,4 +1,4 @@
-.PHONY: help ping info update setup list graph shell reboot check clean
+.PHONY: help ping info update setup list graph shell reboot check clean locale
 
 # Подавление предупреждений Python
 export PYTHONWARNINGS=ignore::DeprecationWarning
@@ -24,6 +24,9 @@ update: ## Обновить все хосты
 setup: ## Базовая настройка кластера
 	ansible-playbook setup-cluster.yml
 
+locale: ## Настроить русскую локаль (ru_RU.UTF-8) на всех хостах
+	ansible-playbook fix-locale.yml
+
 list: ## Список всех хостов
 	ansible-inventory --list
 
@@ -36,7 +39,6 @@ ping-pi5: ## Ping только Raspberry Pi 5
 
 ping-pi4: ## Ping только Raspberry Pi 4
 	ansible pi4_8gb -m ping
-
 info-pi5: ## Информация только о Pi 5
 	ansible-playbook system-info.yml --limit pi5
 
