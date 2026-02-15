@@ -1,0 +1,32 @@
+---
+# defaults file for ssd_rootfs
+
+# SSD device (auto-detect if not specified)
+ssd_device: auto
+
+# SSD partition to use as rootfs
+ssd_partition: auto
+
+# Mount point for SSD operations
+ssd_mount_point: /mnt/ssd
+
+# Boot partition mount point on microSD
+boot_mount_point: /boot/firmware
+
+# Filesystem type
+ssd_filesystem: ext4
+
+# Mount options for rootfs
+ssd_mount_options: defaults,noatime
+
+# Skip confirmation prompts (for automation)
+ssd_skip_confirmation: false
+
+# Minimum free space ratio (SSD size / current usage)
+ssd_min_free_space_ratio: 1.1
+
+# Enable reboot after configuration
+ssd_reboot_after_config: true
+
+# Reboot delay in seconds
+ssd_reboot_delay: 5

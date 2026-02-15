@@ -1,0 +1,146 @@
+---
+# Prepare SSD - check existing filesystem or format
+
+- name: Get SSD partition UUID and filesystem info
+  ansible.builtin.command: "blkid -o export /dev/{{ ssd_partition }}"
+  changed_when: false
+  register: ssd_blkid
+  failed_when: false
+  tags:
+    - prepare
+
+- name: Check if partition has ext4 filesystem
+  ansible.builtin.set_fact:
+    ssd_has_ext4: "{{ ssd_blkid.rc == 0 and ('ext4' in ssd_blkid.stdout or 'TYPE=ext4' in ssd_blkid.stdout) }}"
+  tags:
+    - prepare
+
+- name: Display existing filesystem info
+  ansible.builtin.debug:
+    msg: "Раздел /dev/{{ ssd_partition }} уже имеет файловую систему"
+  when:
+    - ssd_has_ext4 | bool
+  tags:
+    - prepare
+
+- name: Get SSD UUID
+  ansible.builtin.command: "blkid -s UUID -o value /dev/{{ ssd_partition }}"
+  changed_when: false
+  register: ssd_uuid_output
+  when:
+    - ssd_has_ext4 | bool
+  tags:
+    - prepare
+
+- name: Set SSD UUID fact
+  ansible.builtin.set_fact:
+    ssd_uuid: "{{ ssd_uuid_output.stdout.strip() }}"
+  when:
+    - ssd_has_ext4 | bool
+    - ssd_uuid_output.rc == 0
+  tags:
+    - prepare
+
+- name: Skip formatting if ext4 exists
+  ansible.builtin.debug:
+    msg: "Пропускаем форматирование - раздел уже имеет ext4 с UUID {{ ssd_uuid }}"
+  when:
+    - ssd_has_ext4 | bool
+  tags:
+    - prepare
+
+- name: Warn about destructive operation
+  ansible.builtin.debug:
+    msg: "ВНИМАНИЕ: Раздел /dev/{{ ssd_partition }} БУДЕТ ОТФОРМАТИРОВАН. Все данные будут потеряны!"
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+    - not (ssd_skip_confirmation | bool)
+  tags:
+    - prepare
+
+- name: Request confirmation for formatting
+  ansible.builtin.pause:
+    prompt: "Продолжить форматирование /dev/{{ ssd_partition }}? (yes/no)"
+    echo: yes
+  register: format_confirm
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+    - not (ssd_skip_confirmation | bool)
+  tags:
+    - prepare
+
+- name: Abort if confirmation denied
+  ansible.builtin.fail:
+    msg: "Форматирование отменено пользователем"
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+    - not (ssd_skip_confirmation | bool)
+    - format_confirm.user_input | lower != 'yes'
+  tags:
+    - prepare
+
+# Форматирование только если раздел не имеет ext4
+- name: Display info before formatting
+  ansible.builtin.debug:
+    msg: "Форматируем /dev/{{ ssd_partition }} в {{ ssd_filesystem }}"
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+  tags:
+    - prepare
+
+- name: Unmount SSD partition if mounted
+  ansible.builtin.command: "umount /dev/{{ ssd_partition }}"
+  become: true
+  failed_when: false
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+  tags:
+    - prepare
+
+- name: Create new ext4 filesystem on SSD
+  ansible.builtin.command: "mkfs.ext4 -F /dev/{{ ssd_partition }}"
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+  become: true
+  tags:
+    - prepare
+
+- name: Get SSD UUID after formatting
+  ansible.builtin.command: "blkid -s UUID -o value /dev/{{ ssd_partition }}"
+  changed_when: false
+  register: ssd_uuid_output_new
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+  tags:
+    - prepare
+
+- name: Set SSD UUID fact after formatting
+  ansible.builtin.set_fact:
+    ssd_uuid: "{{ ssd_uuid_output_new.stdout.strip() }}"
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+    - ssd_uuid_output_new.rc == 0
+  tags:
+    - prepare
+
+- name: Display SSD UUID
+  ansible.builtin.debug:
+    msg: "SSD UUID: {{ ssd_uuid }}"
+  tags:
+    - prepare
+
+- name: Get SSD PARTUUID
+  ansible.builtin.command: "blkid -s PARTUUID -o value /dev/{{ ssd_partition }}"
+  changed_when: false
+  register: ssd_partuuid_output
+  failed_when: false
+  tags:
+    - prepare
+
+- name: Set SSD PARTUUID fact
+  ansible.builtin.set_fact:
+    ssd_partuuid: "{{ ssd_partuuid_output.stdout.strip() }}"
+  when:
+    - ssd_partuuid_output.rc == 0
+  tags:
+    - prepare

@@ -1,0 +1,60 @@
+---
+# Playbook для проверки состояния после переноса на SSD
+
+- name: Проверить загрузку с SSD
+  hosts: all
+  become: false
+  gather_facts: true
+
+  tasks:
+    - name: Получить информацию о корневой файловой системе
+      ansible.builtin.shell: df -h /
+      register: root_fs_info
+      changed_when: false
+
+    - name: Отобразить информацию о корневой файловой системе
+      ansible.builtin.debug:
+        msg: "{{ root_fs_info.stdout_lines }}"
+
+    - name: Получить устройство корня
+      ansible.builtin.shell: df / | tail -1 | awk '{print $1}'
+      register: root_device
+      changed_when: false
+
+    - name: Проверить что корень на SSD
+      ansible.builtin.assert:
+        that:
+          - "'/dev/sd' in root_device.stdout"
+        success_msg: "✓ Система загружается с SSD: {{ root_device.stdout.strip() }}"
+        fail_msg: "✗ Система загружается НЕ с SSD: {{ root_device.stdout.strip() }}"
+
+    - name: Получить информацию о блочных устройствах
+      ansible.builtin.command: lsblk
+      register: lsblk_info
+      changed_when: false
+
+    - name: Отобразить информацию о блочных устройствах
+      ansible.builtin.debug:
+        msg: "{{ lsblk_info.stdout_lines }}"
+
+    - name: Проверить загрузочный раздел
+      ansible.builtin.shell: df -h {{ boot_mount_point | default('/boot/firmware') }}
+      register: boot_fs_info
+      changed_when: false
+
+    - name: Отобразить информацию о загрузочном разделе
+      ansible.builtin.debug:
+        msg: "{{ boot_fs_info.stdout_lines }}"
+
+    - name: Итоговая сводка
+      ansible.builtin.debug:
+        msg:
+          - "══════════════════════════════════════════════════════════"
+          - "  Проверка {{ inventory_hostname }} завершена"
+          - ""
+          - "  Корневая ФС: {{ root_device.stdout.strip() }}"
+          - "  Статус: {% if '/dev/sd' in root_device.stdout %}УСПЕХ - система на SSD{% else %}ПРОВАЛ - система не на SSD{% endif %}"
+          - "══════════════════════════════════════════════════════════"
+
+  vars:
+    boot_mount_point: /boot/firmware

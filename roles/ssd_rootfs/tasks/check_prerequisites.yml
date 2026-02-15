@@ -1,0 +1,32 @@
+---
+# Check required utilities
+
+- name: Check required utilities
+  ansible.builtin.command: "which {{ item }}"
+  changed_when: false
+  register: util_check
+  failed_when: false
+  loop:
+    - fdisk
+    - mkfs.ext4
+    - rsync
+    - blkid
+  tags:
+    - prereq
+
+- name: Fail if required utilities are missing
+  ansible.builtin.fail:
+    msg: "Требуемая утилита не найдена: {{ item.item }}"
+  when:
+    - item.rc != 0
+  loop: "{{ util_check.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  tags:
+    - prereq
+
+- name: All required utilities are available
+  ansible.builtin.debug:
+    msg: "Все требуемые утилиты установлены: fdisk, mkfs.ext4, rsync, blkid"
+  tags:
+    - prereq

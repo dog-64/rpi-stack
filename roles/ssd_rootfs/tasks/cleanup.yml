@@ -1,0 +1,38 @@
+---
+# Cleanup and finalization
+
+- name: Unmount SSD partition
+  ansible.builtin.mount:
+    path: "{{ ssd_mount_point }}"
+    src: "/dev/{{ ssd_partition }}"
+    fstype: "{{ ssd_filesystem }}"
+    state: unmounted
+  become: true
+  tags:
+    - cleanup
+
+- name: Remove mount point directory
+  ansible.builtin.file:
+    path: "{{ ssd_mount_point }}"
+    state: absent
+  become: true
+  when:
+    - ssd_mount_point != '/mnt'  # Safety check
+  tags:
+    - cleanup
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg:
+      - "══════════════════════════════════════════════════════════"
+      - "  Конфигурация завершена!"
+      - "  SSD: /dev/{{ ssd_partition }}"
+      - "  UUID: {{ ssd_uuid | default('не определён') }}"
+      - ""
+      - "  Следующие шаги:"
+      - "  1. Перезагрузите систему"
+      - "  2. После перезагрузки проверьте: df -h /"
+      - "  3. Должно показывать: /dev/{{ ssd_partition }}"
+      - "══════════════════════════════════════════════════════════"
+  tags:
+    - cleanup

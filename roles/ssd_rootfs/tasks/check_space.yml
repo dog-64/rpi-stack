@@ -1,0 +1,38 @@
+---
+# Check available space on SSD
+
+- name: Get current root usage in GB
+  ansible.builtin.shell: df -h / | tail -1 | awk '{print $3}' | sed 's/G//'
+  changed_when: false
+  register: root_usage_output
+
+- name: Set root usage fact
+  ansible.builtin.set_fact:
+    root_usage_gb: "{{ root_usage_output.stdout | float }}"
+
+- name: Get SSD partition size in GB
+  ansible.builtin.shell: lsblk /dev/{{ ssd_partition }} -o SIZE -n -d | sed 's/G//g' | sed 's/,/./'
+  changed_when: false
+  register: ssd_size_output
+
+- name: Set SSD size fact
+  ansible.builtin.set_fact:
+    ssd_size_gb: "{{ ssd_size_output.stdout | float }}"
+
+- name: Check if SSD has enough space
+  ansible.builtin.assert:
+    that:
+      - (ssd_size_gb | float) >= (root_usage_gb | float * ssd_min_free_space_ratio | float)
+    fail_msg: "Недостаточно места на SSD. Требуется: {{ root_usage_gb | float * ssd_min_free_space_ratio | round(2) }}GB, доступно: {{ ssd_size_gb }}GB"
+    quiet: true
+  tags:
+    - check
+
+- name: Display space information
+  ansible.builtin.debug:
+    msg:
+      - "Текущее использование root: {{ root_usage_gb }}GB"
+      - "Размер SSD раздела: {{ ssd_size_gb }}GB"
+      - "Достаточно места: {{ (ssd_size_gb | float) >= (root_usage_gb | float * ssd_min_free_space_ratio | float) }}"
+  tags:
+    - check

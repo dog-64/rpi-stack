@@ -1,0 +1,140 @@
+---
+# Detect SSD device and partition
+
+- name: Get current root device
+  ansible.builtin.shell: df / | tail -1 | awk '{print $1}'
+  changed_when: false
+  register: current_root_device
+  tags:
+    - detect
+
+- name: Set fact if system already booted from SSD
+  ansible.builtin.set_fact:
+    ssd_rootfs_exists: true
+  when:
+    - "'/dev/sd' in current_root_device.stdout"
+  tags:
+    - detect
+
+- name: Skip configuration if already booted from SSD
+  ansible.builtin.debug:
+    msg: "Система уже загружается с SSD: {{ current_root_device.stdout.strip() }}"
+  when:
+    - ssd_rootfs_exists | default(false) | bool
+  tags:
+    - detect
+
+- name: End play if already booted from SSD
+  ansible.builtin.meta: end_host
+  when:
+    - ssd_rootfs_exists | default(false) | bool
+  tags:
+    - detect
+
+- name: Get block devices information
+  ansible.builtin.command: lsblk -d -o NAME,SIZE,RO,TYPE -n
+  changed_when: false
+  register: lsblk_output
+  tags:
+    - detect
+
+- name: Display block devices
+  ansible.builtin.debug:
+    msg: "{{ lsblk_output.stdout_lines }}"
+  tags:
+    - detect
+
+- name: Find SSD devices (grep for sd*)
+  ansible.builtin.shell: lsblk -d -o NAME,TYPE -n | grep 'disk$' | grep -E '^sd' | awk '{print $1}'
+  changed_when: false
+  register: ssd_candidates_output
+  tags:
+    - detect
+
+- name: Set default SSD device fact
+  ansible.builtin.set_fact:
+    ssd_device_detected: "{{ ssd_candidates_output.stdout_lines[0] }}"
+  when:
+    - ssd_candidates_output.stdout_lines | length > 0
+  tags:
+    - detect
+
+- name: Use detected or specified SSD device
+  ansible.builtin.set_fact:
+    ssd_device: "{{ ssd_device_detected }}"
+  when:
+    - ssd_device == 'auto'
+  tags:
+    - detect
+
+- name: Fail if no SSD device found
+  ansible.builtin.fail:
+    msg: "SSD устройство не найдено. Подключите SSD и попробуйте снова."
+  when:
+    - ssd_device == 'auto'
+    - ssd_candidates_output.stdout_lines | length == 0
+  tags:
+    - detect
+
+- name: Check SSD device exists
+  ansible.builtin.stat:
+    path: "/dev/{{ ssd_device }}"
+  register: ssd_stat
+  failed_when: not ssd_stat.stat.exists
+  tags:
+    - detect
+
+- name: Get SSD partitions
+  ansible.builtin.command: "lsblk /dev/{{ ssd_device }} -o NAME,SIZE -n -l"
+  changed_when: false
+  register: ssd_partitions_full
+  tags:
+    - detect
+
+- name: Display SSD partitions
+  ansible.builtin.debug:
+    msg: "SSD разделы: {{ ssd_partitions_full.stdout_lines }}"
+  tags:
+    - detect
+
+- name: Find SSD partition (take last - usually rootfs)
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_device }} -o NAME -n -l | tail -1"
+  changed_when: false
+  register: ssd_partition_output
+  tags:
+    - detect
+
+- name: Set SSD partition fact if auto
+  ansible.builtin.set_fact:
+    ssd_partition: "{{ ssd_partition_output.stdout.strip() }}"
+  when:
+    - ssd_partition == 'auto'
+    - ssd_partition_output.stdout | default('') != ''
+    - ssd_partition_output.rc == 0
+  tags:
+    - detect
+
+- name: Display partition detection result
+  ansible.builtin.debug:
+    msg:
+      - "SSD device: /dev/{{ ssd_device }}"
+      - "SSD partition output: {{ ssd_partition_output.stdout | default('empty') }}"
+      - "SSD partition var: {{ ssd_partition | default('undefined') }}"
+  tags:
+    - detect
+
+- name: Fail if no SSD partition found
+  ansible.builtin.fail:
+    msg: "SSD раздел не найден. Выполните разметку и форматирование SSD."
+  when:
+    - ssd_partition | default('') == ''
+  tags:
+    - detect
+
+- name: Display detected SSD
+  ansible.builtin.debug:
+    msg:
+      - "Обнаружен SSD: /dev/{{ ssd_device }}"
+      - "Раздел: /dev/{{ ssd_partition }}"
+  tags:
+    - detect

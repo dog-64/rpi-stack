@@ -1,0 +1,72 @@
+---
+# Update fstab on SSD to use SSD PARTUUID for root
+
+- name: Get current microSD PARTUUID
+  ansible.builtin.shell: "blkid -s PARTUUID -o value /dev/mmcblk0p2"
+  changed_when: false
+  register: mmc_partuuid_output
+  failed_when: false
+  tags:
+    - fstab
+
+- name: Set microSD PARTUUID fact
+  ansible.builtin.set_fact:
+    mmc_partuuid: "{{ mmc_partuuid_output.stdout.strip() }}"
+  when:
+    - mmc_partuuid_output.rc == 0
+  tags:
+    - fstab
+
+- name: Read current fstab from SSD
+  ansible.builtin.slurp:
+    src: "{{ ssd_mount_point }}/etc/fstab"
+  register: fstab_content
+  tags:
+    - fstab
+
+- name: Create backup of original fstab
+  ansible.builtin.copy:
+    content: "{{ fstab_content.content }}"
+    dest: "{{ ssd_mount_point }}/etc/fstab.backup"
+    mode: '0644'
+  become: true
+  tags:
+    - fstab
+
+- name: Update fstab root entry to use SSD PARTUUID
+  ansible.builtin.lineinfile:
+    path: "{{ ssd_mount_point }}/etc/fstab"
+    regexp: '^PARTUUID=[0-9a-f-]+\\s+/\\s+'
+    line: "PARTUUID={{ ssd_partuuid }}\t/\t{{ ssd_filesystem }}\t{{ ssd_mount_options }}\t0\t1"
+    backup: false
+  become: true
+  when:
+    - ssd_partuuid is defined
+  tags:
+    - fstab
+
+- name: Update fstab boot entry to use microSD PARTUUID
+  ansible.builtin.lineinfile:
+    path: "{{ ssd_mount_point }}/etc/fstab"
+    regexp: '^PARTUUID=[0-9a-f-]+\\s+{{ boot_mount_point }}\\s+'
+    line: "PARTUUID={{ mmc_partuuid }}\t{{ boot_mount_point }}\tvfat\tdefaults\t0\t2"
+    backup: false
+  become: true
+  when:
+    - mmc_partuuid is defined
+  tags:
+    - fstab
+
+- name: Display fstab changes
+  ansible.builtin.command: "cat {{ ssd_mount_point }}/etc/fstab"
+  changed_when: false
+  register: fstab_display
+  become: true
+  tags:
+    - fstab
+
+- name: Show updated fstab
+  ansible.builtin.debug:
+    var: fstab_display.stdout_lines
+  tags:
+    - fstab

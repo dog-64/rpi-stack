@@ -1,0 +1,29 @@
+---
+# Playbook для переноса rootfs Raspberry Pi с microSD на SSD
+
+- name: Перенос rootfs на SSD
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    # Переопределите эти переменные в host_vars или командной строке
+    # ssd_device: /dev/sda
+    # ssd_partition: /dev/sda1
+    # ssd_skip_confirmation: false
+
+  pre_tasks:
+    - name: Отображение информации о хосте
+      ansible.builtin.debug:
+        msg: "Хост: {{ inventory_hostname }}, IP: {{ ansible_host }}"
+
+  roles:
+    - role: ssd_rootfs
+      tags:
+        - ssd_rootfs
+
+  post_tasks:
+    - name: Инструкция по перезагрузке
+      ansible.builtin.debug:
+        msg: "Конфигурация завершена для {{ inventory_hostname }}. Перезагрузите систему вручную."
+      when: not ssd_reboot_after_config | default(false) | bool

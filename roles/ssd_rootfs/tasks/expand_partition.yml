@@ -1,0 +1,100 @@
+---
+# Expand SSD partition to use full disk size
+
+- name: Check if growpart is available
+  ansible.builtin.command: which growpart
+  changed_when: false
+  register: growpart_check
+  failed_when: false
+  tags:
+    - expand
+
+- name: Display growpart availability
+  ansible.builtin.debug:
+    msg: "growpart {{ 'доступен' if growpart_check.rc == 0 else 'НЕ доступен' }}"
+  tags:
+    - expand
+
+- name: Get current partition size
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_partition }} -o SIZE -n -d"
+  changed_when: false
+  register: current_part_size
+  tags:
+    - expand
+
+- name: Get disk size
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_device }} -o SIZE -n -d"
+  changed_when: false
+  register: disk_size
+  tags:
+    - expand
+
+- name: Display size information
+  ansible.builtin.debug:
+    msg:
+      - "Размер диска: {{ disk_size.stdout }}"
+      - "Размер раздела: {{ current_part_size.stdout }}"
+  tags:
+    - expand
+
+- name: Get partition number
+  ansible.builtin.set_fact:
+    partition_number: "{{ ssd_partition | regex_replace('^.*?(\\d+)$', '\\1') }}"
+  tags:
+    - expand
+
+- name: Expand partition to fill disk
+  ansible.builtin.command: "growpart /dev/{{ ssd_device }} {{ partition_number }}"
+  become: true
+  when:
+    - growpart_check.rc == 0
+  register: growpart_result
+  failed_when: false
+  tags:
+    - expand
+
+- name: Display growpart result
+  ansible.builtin.debug:
+    msg: "{{ growpart_result.stdout if growpart_result.rc == 0 else 'Раздел уже использует весь диск' }}"
+  when:
+    - growpart_check.rc == 0
+  tags:
+    - expand
+
+- name: Resize filesystem
+  ansible.builtin.command: "resize2fs /dev/{{ ssd_partition }}"
+  become: true
+  when:
+    - growpart_result.rc == 0
+    - ssd_filesystem == 'ext4'
+  register: resize_result
+  tags:
+    - expand
+
+- name: Display resize result
+  ansible.builtin.debug:
+    msg: "Файловая система расширена: {{ resize_result.stdout_lines[-1] if resize_result.rc == 0 else 'Ошибка' }}"
+  when:
+    - growpart_result.rc == 0
+    - ssd_filesystem == 'ext4'
+  tags:
+    - expand
+
+- name: Get new partition size
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_partition }} -o SIZE -n -d"
+  changed_when: false
+  register: new_part_size
+  when:
+    - growpart_result.rc == 0
+  tags:
+    - expand
+
+- name: Display new size
+  ansible.builtin.debug:
+    msg:
+      - "Было: {{ current_part_size.stdout }}"
+      - "Стало: {{ new_part_size.stdout }}"
+  when:
+    - growpart_result.rc == 0
+  tags:
+    - expand

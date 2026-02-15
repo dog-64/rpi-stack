@@ -1,0 +1,65 @@
+---
+# Verify SSD configuration before reboot
+
+- name: Get current root mount info
+  ansible.builtin.shell: "df / | tail -1 | awk '{print $1}'"
+  changed_when: false
+  register: current_root_device
+  tags:
+    - verify
+
+- name: Display current root device
+  ansible.builtin.debug:
+    msg: "Текущий корень: {{ current_root_device.stdout.strip() }}"
+  tags:
+    - verify
+
+- name: Verify SSD fstab configuration
+  ansible.builtin.command: "grep -E '^PARTUUID={{ ssd_partuuid }}|^UUID={{ ssd_uuid }}' {{ ssd_mount_point }}/etc/fstab"
+  changed_when: false
+  register: fstab_verify
+  failed_when: fstab_verify.rc != 0
+  tags:
+    - verify
+
+- name: Display fstab verification result
+  ansible.builtin.debug:
+    msg: "{{ fstab_verify.stdout_lines }}"
+  tags:
+    - verify
+
+- name: Verify cmdline.txt configuration
+  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}|root=UUID={{ ssd_uuid }}' {{ boot_mount_point }}/cmdline.txt"
+  changed_when: false
+  register: cmdline_verify
+  failed_when: cmdline_verify.rc != 0
+  tags:
+    - verify
+
+- name: Display cmdline.txt verification result
+  ansible.builtin.debug:
+    msg: "{{ cmdline_verify.stdout_lines }}"
+  tags:
+    - verify
+
+- name: Compare disk usage
+  ansible.builtin.command: "df -h / {{ ssd_mount_point }}"
+  changed_when: false
+  register: disk_usage_compare
+  tags:
+    - verify
+
+- name: Display disk usage comparison
+  ansible.builtin.debug:
+    msg: "{{ disk_usage_compare.stdout_lines }}"
+  tags:
+    - verify
+
+- name: Verification summary
+  ansible.builtin.debug:
+    msg:
+      - "✓ SSD fstab настроен корректно"
+      - "✓ cmdline.txt обновлён для загрузки с SSD"
+      - "✓ Следующая перезагрузка будет с SSD ({{ ssd_partition }})"
+  tags:
+    - verify

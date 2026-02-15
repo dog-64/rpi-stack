@@ -1,0 +1,65 @@
+---
+# Update cmdline.txt on microSD to boot from SSD
+
+- name: Read current cmdline.txt from microSD
+  ansible.builtin.slurp:
+    src: "{{ boot_mount_point }}/cmdline.txt"
+  register: cmdline_content
+  tags:
+    - cmdline
+
+- name: Create backup of original cmdline.txt
+  ansible.builtin.copy:
+    content: "{{ cmdline_content.content }}"
+    dest: "{{ boot_mount_point }}/cmdline.txt.backup"
+    mode: '0644'
+  become: true
+  tags:
+    - cmdline
+
+- name: Display current cmdline.txt
+  ansible.builtin.debug:
+    msg: "{{ cmdline_content.content | b64decode }}"
+  tags:
+    - cmdline
+
+- name: Update cmdline.txt root parameter to use SSD PARTUUID
+  ansible.builtin.shell: |
+    sed -i 's/root=PARTUUID=[0-9a-f-]*/root=PARTUUID={{ ssd_partuuid }}/' {{ boot_mount_point }}/cmdline.txt
+  become: true
+  when:
+    - ssd_partuuid is defined
+  tags:
+    - cmdline
+
+- name: Update cmdline.txt root parameter to use SSD UUID (fallback)
+  ansible.builtin.shell: |
+    sed -i 's/root=UUID=[0-9a-f-]*/root=UUID={{ ssd_uuid }}/' {{ boot_mount_point }}/cmdline.txt
+  become: true
+  when:
+    - ssd_uuid is defined
+    - ssd_partuuid is not defined
+  tags:
+    - cmdline
+
+- name: Read updated cmdline.txt
+  ansible.builtin.slurp:
+    src: "{{ boot_mount_point }}/cmdline.txt"
+  register: cmdline_updated
+  tags:
+    - cmdline
+
+- name: Display updated cmdline.txt
+  ansible.builtin.debug:
+    msg: "{{ cmdline_updated.content | b64decode }}"
+  tags:
+    - cmdline
+
+- name: Verify cmdline.txt was updated
+  ansible.builtin.assert:
+    that:
+      - ssd_partuuid in cmdline_updated.content | b64decode or ssd_uuid in cmdline_updated.content | b64decode
+    fail_msg: "cmdline.txt не был обновлён корректно"
+    quiet: true
+  tags:
+    - cmdline

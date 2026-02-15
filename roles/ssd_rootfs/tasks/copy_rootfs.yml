@@ -1,0 +1,51 @@
+---
+# Copy root filesystem to SSD
+
+- name: Check if SSD has existing rootfs
+  ansible.builtin.stat:
+    path: "{{ ssd_mount_point }}/etc"
+  register: ssd_rootfs_check
+  tags:
+    - copy
+
+- name: Set ssd_rootfs_exists fact
+  ansible.builtin.set_fact:
+    ssd_rootfs_exists: "{{ ssd_rootfs_check.stat.exists }}"
+  tags:
+    - copy
+
+- name: Skip copy if rootfs already exists on SSD
+  ansible.builtin.debug:
+    msg: "Пропускаем копирование - на SSD уже есть rootfs"
+  when:
+    - ssd_rootfs_exists | bool
+  tags:
+    - copy
+
+# Копирование только если нет rootfs на SSD
+- name: Copy root filesystem to SSD (this may take a while)
+  ansible.builtin.shell: |
+    rsync -axHAWX --info=progress2 \
+      --exclude=/mnt/** \
+      --exclude={{ ssd_mount_point }}/** \
+      --exclude=/tmp/** \
+      --exclude=/proc/** \
+      --exclude=/sys/** \
+      --exclude=/dev/** \
+      --exclude=/run/** \
+      / {{ ssd_mount_point }}/
+  become: true
+  when:
+    - not (ssd_rootfs_exists | bool)
+  register: rsync_result
+  tags:
+    - copy
+
+- name: Display copy result
+  ansible.builtin.debug:
+    msg: "Копирование завершено. RC: {{ rsync_result.rc }}"
+  when:
+    - not (ssd_rootfs_exists | bool)
+    - rsync_result.rc is defined
+  tags:
+    - copy
