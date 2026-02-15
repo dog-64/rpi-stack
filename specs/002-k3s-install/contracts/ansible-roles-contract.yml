@@ -1,0 +1,186 @@
+# Ansible Roles Contract: K3s Installation
+# Определяет контракт входных/выходных данных для каждой роли
+# Date: 2026-02-15
+
+---
+roles:
+
+  k3s_prerequisites:
+    description: "Подготовка хоста Raspberry Pi для установки K3s"
+    applies_to:
+      - k3s_server
+      - k3s_agent
+    inputs:
+      k3s_kernel_modules:
+        type: list
+        default: ["overlay", "br_netfilter"]
+        description: "Модули ядра для загрузки"
+      k3s_sysctl_params:
+        type: dict
+        default:
+          net.bridge.bridge-nf-call-iptables: 1
+          net.bridge.bridge-nf-call-ip6tables: 1
+          net.ipv4.ip_forward: 1
+        description: "Sysctl параметры"
+      k3s_disable_swap:
+        type: bool
+        default: true
+        description: "Полное отключение swap"
+      k3s_required_packages:
+        type: list
+        default: ["curl", "ca-certificates"]
+        description: "Системные пакеты"
+    outputs:
+      - "Модули ядра загружены и сохранены в /etc/modules-load.d/k3s.conf"
+      - "Sysctl параметры применены и сохранены в /etc/sysctl.d/k3s.conf"
+      - "Swap полностью отключён (swapoff, fstab, dphys-swapfile)"
+      - "Пакеты установлены"
+    idempotency: "Повторный запуск не вносит изменений если хост уже подготовлен"
+
+  k3s_server:
+    description: "Установка K3s в режиме server (control plane)"
+    applies_to:
+      - k3s_server
+    depends_on:
+      - k3s_prerequisites
+    inputs:
+      k3s_version:
+        type: string
+        required: true
+        example: "v1.31.4+k3s1"
+        description: "Версия K3s для установки"
+      k3s_server_bind_address:
+        type: string
+        default: "{{ ansible_host }}"
+        description: "IP для привязки API-сервера"
+      k3s_server_advertise_address:
+        type: string
+        default: "{{ ansible_host }}"
+        description: "IP для анонсирования клиентам"
+      k3s_server_disable:
+        type: list
+        default: ["traefik", "servicelb"]
+        description: "Компоненты K3s для отключения"
+      k3s_kubeconfig_mode:
+        type: string
+        default: "0600"
+        description: "Права доступа к kubeconfig"
+    outputs:
+      - "K3s server запущен (systemd: k3s.service)"
+      - "API-сервер доступен на {{ k3s_server_bind_address }}:6443"
+      - "Cluster token: /var/lib/rancher/k3s/server/node-token"
+      - "kubeconfig: /etc/rancher/k3s/k3s.yaml (mode {{ k3s_kubeconfig_mode }})"
+    idempotency: "Проверяет наличие K3s перед установкой. Повторный запуск безопасен."
+    verification:
+      - "kubectl get nodes — server узел в статусе Ready"
+      - "kubectl get pods -A — системные поды Running"
+
+  k3s_agent:
+    description: "Установка K3s в режиме agent (worker) и подключение к кластеру"
+    applies_to:
+      - k3s_agent
+    depends_on:
+      - k3s_prerequisites
+      - k3s_server
+    inputs:
+      k3s_version:
+        type: string
+        required: true
+        description: "Версия K3s (должна совпадать с server)"
+      k3s_server_url:
+        type: string
+        required: true
+        example: "https://10.0.1.104:6443"
+        description: "URL API-сервера K3s"
+      k3s_token:
+        type: string
+        required: true
+        source: "Извлекается из k3s_server через hostvars"
+        description: "Cluster token для аутентификации"
+    outputs:
+      - "K3s agent запущен (systemd: k3s-agent.service)"
+      - "Узел зарегистрирован в кластере"
+    idempotency: "Проверяет наличие K3s agent перед установкой. Повторный запуск безопасен."
+    verification:
+      - "kubectl get nodes — agent узел появился со статусом Ready"
+
+  k3s_uninstall:
+    description: "Полное удаление K3s с хоста"
+    applies_to:
+      - k3s_server
+      - k3s_agent
+    inputs:
+      k3s_uninstall_cleanup_data:
+        type: bool
+        default: true
+        description: "Удалить данные (/var/lib/rancher)"
+      k3s_uninstall_cleanup_config:
+        type: bool
+        default: true
+        description: "Удалить конфигурацию (/etc/rancher)"
+    outputs:
+      - "K3s процессы остановлены"
+      - "K3s бинарники удалены"
+      - "Данные и конфигурация очищены (если включено)"
+    idempotency: "Безопасно вызывается на хосте без K3s (проверяет наличие скриптов удаления)"
+
+---
+playbooks:
+
+  k3s-install.yml:
+    description: "Главный playbook установки K3s кластера"
+    plays:
+      - name: "Prepare hosts for K3s"
+        hosts: "k3s_server:k3s_agent"
+        roles: [k3s_prerequisites]
+      - name: "Install K3s server"
+        hosts: k3s_server
+        roles: [k3s_server]
+      - name: "Install K3s agents"
+        hosts: k3s_agent
+        roles: [k3s_agent]
+    verification: "make k3s-verify"
+
+  k3s-uninstall.yml:
+    description: "Playbook удаления K3s с хостов"
+    plays:
+      - name: "Uninstall K3s agents first"
+        hosts: k3s_agent
+        roles: [k3s_uninstall]
+      - name: "Uninstall K3s server"
+        hosts: k3s_server
+        roles: [k3s_uninstall]
+
+---
+inventory_groups:
+
+  k3s_server:
+    description: "Хосты с K3s server (control plane)"
+    members: [leha]
+    max_hosts: 1  # Single-server mode, no HA
+
+  k3s_agent:
+    description: "Хосты с K3s agent (worker nodes)"
+    members: [sema]
+    future_members: [motya, osya]
+
+  k3s_cluster:
+    description: "Все хосты K3s кластера"
+    children: [k3s_server, k3s_agent]
+
+---
+ports:
+  description: "Межузловые порты K3s кластера (FR-018)"
+  required:
+    - port: 6443
+      protocol: tcp
+      direction: "agent → server"
+      service: "Kubernetes API"
+    - port: 8472
+      protocol: udp
+      direction: "bidirectional"
+      service: "Flannel VXLAN"
+    - port: 10250
+      protocol: tcp
+      direction: "server → agent"
+      service: "kubelet metrics/exec"

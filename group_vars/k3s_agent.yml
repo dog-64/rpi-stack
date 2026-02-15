@@ -1,0 +1,10 @@
+---
+# Variables for K3s agent (worker) nodes
+
+# Server URL will be constructed from k3s_server group
+k3s_server_url: "https://{{ hostvars[groups['k3s_server'][0]]['ansible_host'] }}:6443"
+
+# Token will be retrieved from server during playbook execution
+k3s_token: ""
+
+k3s_agent_extra_args: ""

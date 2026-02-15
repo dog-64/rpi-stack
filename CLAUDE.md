@@ -71,3 +71,10 @@ ansible -i inventory all -m ping
 - Тестируйте playbooks в режиме `--check` перед применением
 - Используйте осмысленные имена для tasks и playbooks
 - Документируйте сложные задачи в комментариях
+
+## Active Technologies
+- Ansible 2.x, YAML, Bash (скрипты установки/верификации) + K3s (фиксированная версия в group_vars), kubectl, Ansible (002-k3s-install)
+- SQLite (встроенное хранилище K3s для single-server), local-path-provisioner (default StorageClass) (002-k3s-install)
+
+## Recent Changes
+- 002-k3s-install: Added Ansible 2.x, YAML, Bash (скрипты установки/верификации) + K3s (фиксированная версия в group_vars), kubectl, Ansible

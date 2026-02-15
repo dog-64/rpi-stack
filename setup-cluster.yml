@@ -125,8 +125,28 @@
         state: present
         reload: yes
       loop:
-        - { key: 'vm.swappiness', value: '10' }
+        - { key: 'vm.swappiness', value: '0' }
         - { key: 'fs.file-max', value: '65535' }
+
+    - name: Отключить swap полностью (требование K3s)
+      shell: |
+        swapoff -a || true
+      changed_when: false
+      failed_when: false
+
+    - name: Удалить записи swap из /etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '^.*swap.*$'
+        state: absent
+      backup: yes
+
+    - name: Отключить dphys-swapfile сервис (Raspberry Pi OS)
+      systemd:
+        name: dphys-swapfile
+        state: stopped
+        enabled: no
+      failed_when: false
 
     - name: Перезагрузить хосты для применения всех настроек
       reboot:

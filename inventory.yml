@@ -70,6 +70,22 @@ all:
       children:
         pi4_4gb:
 
+    # K3s Cluster Groups
+    k3s_server:
+      hosts:
+        sema:
+
+    k3s_agent:
+      hosts:
+        # leha:  # Blocked by cgroup_disable=memory issue
+        # motya:
+        # osya:
+
+    k3s_cluster:
+      children:
+        k3s_server:
+        k3s_agent:
+
   vars:
     ansible_user: dog
     ansible_python_interpreter: /usr/bin/python3

@@ -1,0 +1,10 @@
+---
+# Variables for K3s server (control plane) nodes
+
+k3s_server_bind_address: "{{ ansible_host }}"
+k3s_server_advertise_address: "{{ ansible_host }}"
+k3s_server_disable:
+  - traefik
+  - servicelb
+k3s_kubeconfig_mode: "0600"
+k3s_server_extra_args: ""

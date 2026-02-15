@@ -1,0 +1,4 @@
+---
+# Global variables for all hosts
+# K3s version - updated after manual installation on sema (Ubuntu Server 24.04)
+k3s_version: "v1.32.12+k3s1"
