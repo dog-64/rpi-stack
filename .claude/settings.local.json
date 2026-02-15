@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for host in p104 p33 p56 p75)",
+      "Bash(do echo \"=== Проверка $host ===\")",
+      "Bash(ping:*)",
+      "Bash(done)",
+      "Bash(ssh:*)",
+      "Bash(ansible active:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(make help:*)",
+      "Bash(make:*)",
+      "Bash(.specify/scripts/bash/create-new-feature.sh:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(ansible-lint:*)",
+      "Bash(git -C /Users/dog/Sites/rpi_stack log --oneline --all)",
+      "Bash(git -C /Users/dog/Sites/rpi_stack branch -a)",
+      "Bash(.specify/scripts/bash/setup-plan.sh:*)",
+      "Bash(.specify/scripts/bash/update-agent-context.sh:*)",
+      "Bash(git -C /Users/dog/Sites/rpi_stack branch:*)",
+      "Bash(curl:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:forums.raspberrypi.com)",
+      "Bash(KUBECONFIG=~/.kube/rpi-k3s.yaml kubectl get nodes:*)",
+      "Bash(KUBECONFIG=~/.kube/rpi-k3s.yaml kubectl get pods:*)"
+    ]
+  }
+}
