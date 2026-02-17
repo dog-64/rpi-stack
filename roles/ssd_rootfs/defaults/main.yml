@@ -1,6 +1,9 @@
 ---
 # defaults file for ssd_rootfs
 
+# Target OS: rpi_os or ubuntu
+ssd_target_os: ubuntu
+
 # SSD device (auto-detect if not specified)
 ssd_device: auto
 
@@ -11,7 +14,11 @@ ssd_partition: auto
 ssd_mount_point: /mnt/ssd
 
 # Boot partition mount point on microSD
-boot_mount_point: /boot/firmware
+# Raspberry Pi OS uses /boot, Ubuntu uses /boot/firmware
+boot_mount_point: "{{ 'firmware' if ssd_target_os == 'ubuntu' else '/boot' }}"
+
+# Boot partition full path
+boot_mount_full_path: "{{ '/boot/firmware' if ssd_target_os == 'ubuntu' else '/boot' }}"
 
 # Filesystem type
 ssd_filesystem: ext4
@@ -30,3 +37,10 @@ ssd_reboot_after_config: true
 
 # Reboot delay in seconds
 ssd_reboot_delay: 5
+
+# Ubuntu specific: Label names for root and boot partitions
+ubuntu_root_label: writable
+ubuntu_boot_label: system-boot
+
+# Use LABEL instead of PARTUUID (Ubuntu uses LABEL)
+ssd_use_label: "{{ ssd_target_os == 'ubuntu' }}"
