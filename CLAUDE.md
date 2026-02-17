@@ -18,6 +18,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Это проект Ansible для управления конфигурацией и автоматизации инфраструктуры Raspberry Pi кластера.
 
+### Целевая ОС для Kubernetes
+
+**Работа с Kubernetes кластером ведётся исключительно под Ubuntu 25.10.**
+
+Это ограничение связано с:
+- Актуальной поддержкой containerd и Kubernetes на ARM64
+- Совместимостью с современными версиями K8s компонентов
+- Стабильностью работы контейнерного раннера
+
+Raspberry Pi OS НЕ рекомендуется для Kubernetes из-за устаревших пакетов и ограниченной поддержки.
+
 ## Общие команды Ansible
 
 ```bash
