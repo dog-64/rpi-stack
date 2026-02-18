@@ -1,0 +1,51 @@
+---
+- name: Get k3s node token from server
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token
+  delegate_to: "{{ groups['k3s_server'][0] }}"
+  run_once: true
+  become: true
+  when: k3s_token == ""
+
+- name: Set k3s token fact
+  ansible.builtin.set_fact:
+    k3s_token_value: "{{ k3s_token if k3s_token != '' else k3s_node_token.content | b64decode | trim }}"
+  when: k3s_token != "" or k3s_node_token is defined
+
+- name: Build agent install command
+  ansible.builtin.set_fact:
+    k3s_install_env: >-
+      K3S_URL='{{ k3s_url }}'
+      K3S_TOKEN='{{ k3s_token_value }}'
+      INSTALL_K3S_EXEC='agent'
+      K3S_NODE_NAME='{{ inventory_hostname }}'
+    k3s_agent_flags: >-
+      --server {{ k3s_url }}
+      {{ k3s_agent_args }}
+      {{ k3s_agent_extra_args }}
+
+- name: Display install command (debug)
+  ansible.builtin.debug:
+    msg: "Installing k3s agent with: {{ k3s_install_env }}"
+    verbosity: 1
+
+- name: Install k3s agent
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+    {{ k3s_install_env }} sh -s - {{ k3s_agent_flags }}
+  args:
+    creates: /usr/local/bin/k3s
+  environment:
+    INSTALL_K3S_CHANNEL: "{{ k3s_channel }}"
+  become: true
+  register: k3s_agent_install
+  async: 600
+  poll: 10
+
+- name: Wait for k3s agent service to be running
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: started
+  become: true
+  when: k3s_agent_install.changed

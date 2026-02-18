@@ -52,8 +52,9 @@
 
 # Для Ubuntu: меняем метку microSD rootfs после успешного копирования
 # Это заставит загрузчик выбрать SSD с меткой "writable"
+# Используем tune2fs т.к. e2label иногда не работает корректно
 - name: Change microSD rootfs label to avoid boot conflict (Ubuntu)
-  ansible.builtin.command: "e2label /dev/mmcblk0p2 writable-sd"
+  ansible.builtin.command: "tune2fs -L writable-sd /dev/mmcblk0p2"
   become: true
   when:
     - ssd_target_os == 'ubuntu'

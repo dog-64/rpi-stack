@@ -31,13 +31,7 @@
     - ssd_rootfs
     - mount
 
-- name: Import copy_rootfs tasks
-  ansible.builtin.include_tasks: copy_rootfs.yml
-  when: not (ssd_rootfs_exists | default(false) | bool)
-  tags:
-    - ssd_rootfs
-    - copy
-
+# Расширение ДО копирования - чтобы было достаточно места
 - name: Import expand_partition tasks
   ansible.builtin.include_tasks: expand_partition.yml
   when:
@@ -45,6 +39,13 @@
   tags:
     - ssd_rootfs
     - expand
+
+- name: Import copy_rootfs tasks
+  ansible.builtin.include_tasks: copy_rootfs.yml
+  when: not (ssd_rootfs_exists | default(false) | bool)
+  tags:
+    - ssd_rootfs
+    - copy
 
 - name: Import update_fstab tasks
   ansible.builtin.include_tasks: update_fstab.yml
@@ -54,16 +55,6 @@
 
 - name: Import update_cmdline tasks
   ansible.builtin.include_tasks: update_cmdline.yml
-  tags:
-    - ssd_rootfs
-    - cmdline
-
-- name: Notify reboot if enabled
-  ansible.builtin.debug:
-    msg: "Перезагрузка будет выполнена после завершения"
-  notify: "reboot system"
-  when:
-    - ssd_reboot_after_config | default(false) | bool
   tags:
     - ssd_rootfs
     - cmdline
@@ -79,3 +70,16 @@
   tags:
     - ssd_rootfs
     - cleanup
+
+- name: Reboot to boot from SSD
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    connect_timeout: 10
+    test_command: whoami
+  become: true
+  when:
+    - ssd_reboot_after_config | default(true) | bool
+    - not (ssd_rootfs_exists | default(false) | bool)
+  tags:
+    - ssd_rootfs
+    - reboot

@@ -1,0 +1,66 @@
+---
+- name: Load overlay kernel module
+  ansible.builtin.modprobe:
+    name: overlay
+    state: present
+  become: true
+
+- name: Load br_netfilter kernel module (may be built into bridge on newer kernels)
+  ansible.builtin.modprobe:
+    name: br_netfilter
+    state: present
+  become: true
+  ignore_errors: true
+  register: br_netfilter_result
+
+- name: Load bridge module as fallback if br_netfilter not available
+  ansible.builtin.modprobe:
+    name: bridge
+    state: present
+  become: true
+  when: br_netfilter_result is failed
+
+- name: Enable ip_forward
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    reload: true
+  become: true
+
+- name: Check if bridge-nf-call-iptables sysctl exists
+  ansible.builtin.stat:
+    path: /proc/sys/net/bridge/bridge-nf-call-iptables
+  register: bridge_nf_stat
+  become: true
+
+- name: Configure bridge sysctl for Kubernetes (only if available)
+  ansible.builtin.sysctl:
+    name: "{{ item }}"
+    value: '1'
+    state: present
+    reload: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+  become: true
+  when: bridge_nf_stat.stat.exists
+
+- name: Check cgroups configuration
+  ansible.builtin.shell: cat /proc/cgroups | grep -E 'memory|cpu' | awk '{print $4}'
+  register: cgroups_check
+  changed_when: false
+
+- name: Warning if cgroup memory not enabled
+  ansible.builtin.debug:
+    msg: "WARNING: cgroup_memory may need to be enabled in cmdline.txt"
+  when: "'1' not in cgroups_check.stdout"
+
+- name: Install required packages (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - curl
+      - iptables
+    state: present
+  become: true
+  when: ansible_os_family == 'Debian'

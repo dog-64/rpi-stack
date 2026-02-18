@@ -14,6 +14,18 @@
   tags:
     - verify
 
+- name: Set fact if already booted from SSD
+  ansible.builtin.set_fact:
+    already_on_ssd: "{{ '/dev/sd' in current_root_device.stdout or '/dev/nvme' in current_root_device.stdout }}"
+  tags:
+    - verify
+
+- name: Display boot status
+  ansible.builtin.debug:
+    msg: "{{ 'Система УЖЕ загружена с SSD' if already_on_ssd else 'Система загружена с microSD, миграция требуется' }}"
+  tags:
+    - verify
+
 - name: Verify SSD fstab configuration (Ubuntu with LABEL)
   ansible.builtin.command: "grep -E '^LABEL={{ ubuntu_root_label }}\\s+/' {{ ssd_mount_point }}/etc/fstab"
   changed_when: false
@@ -21,6 +33,7 @@
   failed_when: fstab_verify.rc != 0
   when:
     - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
   tags:
     - verify
 
@@ -55,6 +68,7 @@
     msg: "{{ boot_fstab_verify.stdout_lines }}"
   when:
     - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
   tags:
     - verify
 
@@ -62,9 +76,12 @@
   ansible.builtin.command: "blkid -s LABEL -o value /dev/mmcblk0p2"
   changed_when: false
   register: sd_label_verify
-  failed_when: sd_label_verify.rc != 0
+  failed_when: 
+    - sd_label_verify.rc != 0
+    - "'writable-sd' not in sd_label_verify.stdout"
   when:
     - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
   tags:
     - verify
 
@@ -72,9 +89,12 @@
   ansible.builtin.command: "blkid -s LABEL -o value /dev/{{ ssd_partition }}"
   changed_when: false
   register: ssd_label_verify
-  failed_when: ssd_label_verify.rc != 0
+  failed_when:
+    - ssd_label_verify.rc != 0
+    - "'writable' not in ssd_label_verify.stdout"
   when:
     - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
   tags:
     - verify
 
@@ -83,9 +103,10 @@
     msg:
       - "microSD rootfs label: {{ sd_label_verify.stdout.strip() }}"
       - "SSD rootfs label: {{ ssd_label_verify.stdout.strip() }}"
-      - "Загрузчик выберет SSD ( LABEL=writable )"
+      - "Загрузчик выберет SSD (LABEL=writable)"
   when:
     - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
   tags:
     - verify
 

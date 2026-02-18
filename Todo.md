@@ -4,6 +4,33 @@
 
 ---
 
+## [x] Миграция rootfs на SSD (Ubuntu 25.10, Pi 5)
+
+**Статус:** ЗАВЕРШЕНО ✓ (2026-02-18)
+
+**Выполнено на хосте:** sema (Pi 5, Ubuntu 25.10)
+
+**Результат:**
+- Root устройство: /dev/mmcblk0p2 → /dev/sda2 ✓
+- Размер root: 57G → 111G ✓
+- Boot остаётся на microSD (LABEL=system-boot)
+- SSD имеет LABEL=writable, microSD переименован в writable-sd
+
+**Процесс миграции:**
+1. `rsync -axHAWX` — синхронизация rootfs на SSD
+2. `tune2fs -L writable-sd /dev/mmcblk0p2` — изменение LABEL microSD
+3. Обновление /etc/fstab на SSD
+4. Перезагрузка
+
+**Откат:** Если SSD не загрузится:
+1. Отключить SSD физически
+2. `tune2fs -L writable /dev/mmcblk0p2` (с Live USB)
+3. Система загрузится с microSD
+
+**Ansible роль:** `roles/ssd_rootfs/` — обновлена и протестирована
+
+---
+
 ## [ ] Рефакторинг плейбуков в Ansible роли
 
 **Описание:** Переписать все отдельные YAML файлы плейбуков в переиспользуемые Ansible роли по best practices.

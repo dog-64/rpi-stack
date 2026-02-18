@@ -1,5 +1,6 @@
 ---
 # Expand SSD partition to use full disk size
+# Важно: расширение делается ДО копирования rootfs, чтобы было достаточно места
 
 - name: Check if growpart is available
   ansible.builtin.command: which growpart
@@ -49,23 +50,26 @@
   when:
     - growpart_check.rc == 0
   register: growpart_result
-  failed_when: false
+  failed_when: 
+    - growpart_result.rc != 0
+    - "'NOCHANGE' not in growpart_result.stdout | default('')"
   tags:
     - expand
 
 - name: Display growpart result
   ansible.builtin.debug:
-    msg: "{{ growpart_result.stdout if growpart_result.rc == 0 else 'Раздел уже использует весь диск' }}"
+    msg: "{{ growpart_result.stdout if growpart_result.rc == 0 else 'Раздел уже использует весь диск или не требуется расширение' }}"
   when:
     - growpart_check.rc == 0
   tags:
     - expand
 
-- name: Resize filesystem
+- name: Resize filesystem (online resize supported for ext4)
   ansible.builtin.command: "resize2fs /dev/{{ ssd_partition }}"
   become: true
   when:
-    - growpart_result.rc == 0
+    - growpart_check.rc == 0
+    - growpart_result.rc == 0 or 'CHANGED' in growpart_result.stdout | default('')
     - ssd_filesystem == 'ext4'
   register: resize_result
   tags:
@@ -73,9 +77,9 @@
 
 - name: Display resize result
   ansible.builtin.debug:
-    msg: "Файловая система расширена: {{ resize_result.stdout_lines[-1] if resize_result.rc == 0 else 'Ошибка' }}"
+    msg: "Файловая система расширена: {{ resize_result.stdout_lines[-1] if (resize_result is not skipped and resize_result.rc == 0) else 'Расширение не требуется или выполнено ранее' }}"
   when:
-    - growpart_result.rc == 0
+    - growpart_check.rc == 0
     - ssd_filesystem == 'ext4'
   tags:
     - expand
@@ -85,7 +89,7 @@
   changed_when: false
   register: new_part_size
   when:
-    - growpart_result.rc == 0
+    - growpart_check.rc == 0
   tags:
     - expand
 
@@ -93,8 +97,8 @@
   ansible.builtin.debug:
     msg:
       - "Было: {{ current_part_size.stdout }}"
-      - "Стало: {{ new_part_size.stdout }}"
+      - "Стало: {{ new_part_size.stdout | default('без изменений') }}"
   when:
-    - growpart_result.rc == 0
+    - growpart_check.rc == 0
   tags:
     - expand

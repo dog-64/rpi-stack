@@ -1,0 +1,43 @@
+---
+- name: Check for k3s uninstall script (server)
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s-uninstall.sh
+  register: k3s_uninstall_script
+
+- name: Check for k3s uninstall script (agent)
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s-agent-uninstall.sh
+  register: k3s_agent_uninstall_script
+
+- name: Uninstall k3s server
+  ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+  become: true
+  when: 
+    - k3s_uninstall_script.stat.exists
+    - k3s_role == 'server'
+
+- name: Uninstall k3s agent
+  ansible.builtin.command: /usr/local/bin/k3s-agent-uninstall.sh
+  become: true
+  when:
+    - k3s_agent_uninstall_script.stat.exists
+    - k3s_role == 'agent'
+
+- name: Clean up remaining k3s directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/lib/rancher
+    - /etc/rancher
+    - /var/lib/kubelet
+    - /var/lib/cni
+    - /run/k3s
+  become: true
+  when: k3s_uninstall_script.stat.exists or k3s_agent_uninstall_script.stat.exists
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+  when: k3s_uninstall_script.stat.exists or k3s_agent_uninstall_script.stat.exists

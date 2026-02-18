@@ -9,6 +9,7 @@ all:
           hostname: p104
           model: "Raspberry Pi 5"
           memory: "8GB"
+          k3s_role: agent
           services:
             - "Raspberry Pi Connect"
 
@@ -17,6 +18,7 @@ all:
           hostname: p33
           model: "Raspberry Pi 5"
           memory: "8GB"
+          k3s_role: server
           services:
             - "Raspberry Pi Connect"
 
@@ -25,6 +27,7 @@ all:
           hostname: p56
           model: "Raspberry Pi 4"
           memory: "8GB"
+          k3s_role: agent
           services:
             - "Raspberry Pi Connect"
 
@@ -33,6 +36,7 @@ all:
           hostname: p75
           model: "Raspberry Pi 4"
           memory: "8GB"
+          k3s_role: agent
           services:
             - "Raspberry Pi Connect"
 
@@ -70,7 +74,24 @@ all:
       children:
         pi4_4gb:
 
+    # k3s cluster roles
+    k3s_server:
+      hosts:
+        sema:
+
+    k3s_agent:
+      hosts:
+        leha:
+        motya:
+        osya:
+
+    k3s_cluster:
+      children:
+        k3s_server:
+        k3s_agent:
+
   vars:
     ansible_user: dog
     ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

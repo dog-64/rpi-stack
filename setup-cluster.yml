@@ -3,6 +3,12 @@
   hosts: active
   become: yes
 
+  handlers:
+    - name: Restart avahi
+      systemd:
+        name: avahi-daemon
+        state: restarted
+
   tasks:
     - name: Обновить список пакетов
       apt:
@@ -127,6 +133,27 @@
       loop:
         - { key: 'vm.swappiness', value: '10' }
         - { key: 'fs.file-max', value: '65535' }
+
+    - name: Включить публикацию workstation в Avahi (mDNS)
+      lineinfile:
+        path: /etc/avahi/avahi-daemon.conf
+        regexp: '^publish-workstation='
+        line: 'publish-workstation=yes'
+        state: present
+      notify: Restart avahi
+
+    - name: Убедиться что avahi-daemon запущен
+      systemd:
+        name: avahi-daemon
+        state: started
+        enabled: yes
+
+    - name: Отключить rpi-eeprom-update для быстрой загрузки (Pi 4)
+      systemd:
+        name: rpi-eeprom-update.service
+        enabled: no
+        masked: yes
+      when: ansible_board_name is defined and 'Raspberry Pi 4' in ansible_board_name
 
     - name: Перезагрузить хосты для применения всех настроек
       reboot:

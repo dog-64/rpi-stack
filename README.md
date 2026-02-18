@@ -34,8 +34,85 @@
 - `pi4_4gb` - Raspberry Pi 4 с 4GB (vitl)
 - `high_memory` - хосты с 8GB памяти
 - `low_memory` - хосты с 4GB памяти
+- `k3s_server` - control-plane нода (sema)
+- `k3s_agent` - worker ноды (leha, motya, osya)
+- `k3s_cluster` - все ноды k3s
 
 ## Быстрый старт
+
+### Установка
+
+- записываем образ на Raspberry Pi Imager - Ubuntu 25.10 Server
+- запускаем скрипт фикса сети
+```shell
+  sudo ./scripts/fix-sd-network.sh /dev/disk11
+```
+
+- загружаемся с micro SD
+- запускаем Ansible по переключению на SSD как на системный
+```shell
+ansible-playbook playbooks/ssd-migrate.yml -i inventory.yml --limit leha   
+```
+
+### Установка k3s (Kubernetes)
+
+**Архитектура кластера:**
+- `k3s_server` (control-plane) — нода управления (sema)
+- `k3s_agent` (workers) — рабочие ноды (leha, motya, osya)
+
+**Установка control-plane (server):**
+```bash
+# Установка на серверную ноду
+ansible-playbook playbooks/k3s-install.yml --limit k3s_server
+
+# Или через Makefile
+make k3s-server
+```
+
+**Установка worker-нод (agents):**
+```bash
+# Установка на все agent-ноды
+ansible-playbook playbooks/k3s-install.yml --limit k3s_agent
+
+# Или через Makefile
+make k3s-agents
+```
+
+**Установка всего кластера одной командой:**
+```bash
+ansible-playbook playbooks/k3s-install.yml --limit k3s_cluster
+# Или
+make k3s-install
+```
+
+**Проверка статуса кластера:**
+```bash
+# Статус нод
+make k3s-status
+
+# Поды в кластере
+make k3s-pods
+
+# Получить токен для добавления новых нод
+make k3s-token
+
+# Kubeconfig для удалённого доступа
+make k3s-kubeconfig
+```
+
+**Удаление k3s:**
+```bash
+# Удалить со всех хостов
+make k3s-uninstall
+
+# Удалить только server
+make k3s-uninstall-server
+
+# Удалить только agents
+make k3s-uninstall-agents
+```
+
+**Подробнее:** [docs/k3s-install-manual.md](docs/k3s-install-manual.md)
 
 ### Проверка подключения
 

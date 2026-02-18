@@ -59,20 +59,21 @@
   tags:
     - detect
 
-- name: Use detected or specified SSD device
-  ansible.builtin.set_fact:
-    ssd_device: "{{ ssd_device_detected }}"
-  when:
-    - ssd_device == 'auto'
-  tags:
-    - detect
-
 - name: Fail if no SSD device found
   ansible.builtin.fail:
     msg: "SSD устройство не найдено. Подключите SSD и попробуйте снова."
   when:
     - ssd_device == 'auto'
     - ssd_candidates_output.stdout_lines | length == 0
+  tags:
+    - detect
+
+- name: Use detected or specified SSD device
+  ansible.builtin.set_fact:
+    ssd_device: "{{ ssd_device_detected }}"
+  when:
+    - ssd_device == 'auto'
+    - ssd_device_detected is defined
   tags:
     - detect
 

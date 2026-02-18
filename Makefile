@@ -1,4 +1,4 @@
-.PHONY: help ping info update setup list graph shell reboot check clean locale todo
+.PHONY: help ping info update setup list graph shell reboot check clean locale todo k3s-install k3s-server k3s-agents k3s-status k3s-uninstall k3s-verify
 
 # Подавление предупреждений Python
 export PYTHONWARNINGS=ignore::DeprecationWarning
@@ -122,3 +122,55 @@ watch-temp: ## Мониторинг температуры каждые 5 сек
 
 watch-memory: ## Мониторинг памяти каждые 5 секунд
 	@watch -n 5 "ansible active -a 'free -h' 2>/dev/null | grep -E '(leha|sema|motya|osya|Mem:)'"
+
+# =====================================
+# k3s Kubernetes Cluster
+# =====================================
+
+k3s-install: ## Установить k3s на весь кластер
+	@echo "$(GREEN)Установка k3s cluster...$(NC)"
+	ansible-playbook playbooks/k3s-install.yml --limit k3s_cluster
+
+k3s-server: ## Установить k3s server (control-plane)
+	@echo "$(GREEN)Установка k3s server...$(NC)"
+	ansible-playbook playbooks/k3s-install.yml --limit k3s_server
+
+k3s-agents: ## Установить k3s agents (workers)
+	@echo "$(GREEN)Установка k3s agents...$(NC)"
+	ansible-playbook playbooks/k3s-install.yml --limit k3s_agent
+
+k3s-status: ## Статус k3s кластера
+	@echo "$(GREEN)Статус k3s cluster...$(NC)"
+	@ansible k3s_server -b -a "k3s kubectl get nodes -o wide" 2>/dev/null || echo "k3s не установлен"
+
+k3s-pods: ## Показать все поды в кластере (с нодами)
+	@echo "$(GREEN)Поды k3s cluster...$(NC)"
+	@ansible k3s_server -b -a "k3s kubectl get pods -A -o wide" 2>/dev/null || echo "k3s не установлен"
+
+k3s-verify: ## Верификация k3s установки
+	@echo "$(GREEN)Верификация k3s...$(NC)"
+	ansible k3s_cluster -b -m shell -a "k3s --version" 2>/dev/null || echo "k3s не установлен на некоторых хостах"
+
+k3s-uninstall: ## Удалить k3s со всех хостов (требует подтверждения)
+	@echo "$(YELLOW)⚠️  Внимание! Это удалит k3s со ВСЕХ хостов кластера!$(NC)"
+	@read -p "Продолжить? [y/N]: " confirm && [ "$$confirm" = "y" ] && \
+		ansible k3s_cluster -b -m shell -a "/usr/local/bin/k3s-uninstall.sh 2>/dev/null || /usr/local/bin/k3s-agent-uninstall.sh 2>/dev/null || echo 'k3s not installed'" || echo "Отменено"
+
+k3s-uninstall-server: ## Удалить k3s server
+	@echo "$(YELLOW)Удаление k3s server...$(NC)"
+	ansible k3s_server -b -a "/usr/local/bin/k3s-uninstall.sh"
+
+k3s-uninstall-agents: ## Удалить k3s agents
+	@echo "$(YELLOW)Удаление k3s agents...$(NC)"
+	ansible k3s_agent -b -a "/usr/local/bin/k3s-agent-uninstall.sh"
+
+k3s-token: ## Показать токен для подключения agents
+	@echo "$(GREEN)k3s cluster token:$(NC)"
+	@ansible k3s_server -b -a "cat /var/lib/rancher/k3s/server/node-token" 2>/dev/null | grep -E '^K10' || echo "k3s server не установлен"
+
+k3s-kubeconfig: ## Показать kubeconfig для удалённого доступа
+	@echo "$(GREEN)kubeconfig (замените 127.0.0.1 на IP server):$(NC)"
+	@ansible k3s_server -b -a "cat /etc/rancher/k3s/k3s.yaml" 2>/dev/null | grep -v ">>>" | grep -v "CHANGED" || echo "k3s server не установлен"
+
+k3s-shell: ## kubectl shell на server
+	@ssh $$(ansible-inventory --host sema | grep ansible_host | cut -d'"' -f4) -t "sudo k3s kubectl get nodes -o wide; exec bash"
