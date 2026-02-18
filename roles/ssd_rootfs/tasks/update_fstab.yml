@@ -1,7 +1,7 @@
 ---
-# Update fstab on SSD to use SSD PARTUUID for root
+# Update fstab on SSD to use SSD UUID/LABEL for root
 
-- name: Get current microSD PARTUUID
+- name: Get current microSD root PARTUUID/UUID
   ansible.builtin.shell: "blkid -s PARTUUID -o value /dev/mmcblk0p2"
   changed_when: false
   register: mmc_partuuid_output
@@ -33,26 +33,70 @@
   tags:
     - fstab
 
-- name: Update fstab root entry to use SSD PARTUUID
+- name: Remove all root entries from fstab (Ubuntu)
+  ansible.builtin.lineinfile:
+    path: "{{ ssd_mount_point }}/etc/fstab"
+    regexp: '^LABEL=[a-z-]+\\s+/\\s+ext4'
+    state: absent
+  become: true
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - fstab
+
+- name: Add correct root entry to fstab (Ubuntu)
+  ansible.builtin.lineinfile:
+    path: "{{ ssd_mount_point }}/etc/fstab"
+    line: "LABEL={{ ubuntu_root_label }}\t/\t{{ ssd_filesystem }}\t{{ ssd_mount_options }}\t0\t1"
+    insertbefore: BOF
+  become: true
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - fstab
+
+- name: Remove all boot entries from fstab (Ubuntu)
+  ansible.builtin.lineinfile:
+    path: "{{ ssd_mount_point }}/etc/fstab"
+    regexp: '^[^#]+\\s+/boot/firmware\\s+vfat'
+    state: absent
+  become: true
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - fstab
+
+- name: Add correct boot entry to fstab (Ubuntu)
+  ansible.builtin.lineinfile:
+    path: "{{ ssd_mount_point }}/etc/fstab"
+    line: "LABEL={{ ubuntu_boot_label }}\t/boot/firmware\tvfat\tdefaults\t0\t2"
+    insertafter: '^LABEL={{ ubuntu_root_label }}'
+  become: true
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - fstab
+
+- name: Update fstab root entry to use SSD PARTUUID (Raspberry Pi OS)
   ansible.builtin.lineinfile:
     path: "{{ ssd_mount_point }}/etc/fstab"
     regexp: '^PARTUUID=[0-9a-f-]+\\s+/\\s+'
     line: "PARTUUID={{ ssd_partuuid }}\t/\t{{ ssd_filesystem }}\t{{ ssd_mount_options }}\t0\t1"
-    backup: false
   become: true
   when:
+    - ssd_target_os != 'ubuntu'
     - ssd_partuuid is defined
   tags:
     - fstab
 
-- name: Update fstab boot entry to use microSD PARTUUID
+- name: Update fstab boot entry to use microSD PARTUUID (Raspberry Pi OS)
   ansible.builtin.lineinfile:
     path: "{{ ssd_mount_point }}/etc/fstab"
     regexp: '^PARTUUID=[0-9a-f-]+\\s+{{ boot_mount_point }}\\s+'
     line: "PARTUUID={{ mmc_partuuid }}\t{{ boot_mount_point }}\tvfat\tdefaults\t0\t2"
-    backup: false
   become: true
   when:
+    - ssd_target_os != 'ubuntu'
     - mmc_partuuid is defined
   tags:
     - fstab

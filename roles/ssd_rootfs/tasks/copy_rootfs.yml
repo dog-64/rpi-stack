@@ -49,3 +49,25 @@
     - rsync_result.rc is defined
   tags:
     - copy
+
+# Для Ubuntu: меняем метку microSD rootfs после успешного копирования
+# Это заставит загрузчик выбрать SSD с меткой "writable"
+- name: Change microSD rootfs label to avoid boot conflict (Ubuntu)
+  ansible.builtin.command: "e2label /dev/mmcblk0p2 writable-sd"
+  become: true
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (ssd_rootfs_exists | bool)
+  register: sd_label_changed
+  tags:
+    - copy
+
+- name: Display microSD label change
+  ansible.builtin.debug:
+    msg: "Метка microSD rootfs изменена на writable-sd для избежания конфликта при загрузке"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (ssd_rootfs_exists | bool)
+    - sd_label_changed is changed
+  tags:
+    - copy

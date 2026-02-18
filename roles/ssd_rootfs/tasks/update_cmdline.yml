@@ -1,42 +1,77 @@
 ---
-# Update cmdline.txt on microSD to boot from SSD
+# Update boot configuration for SSD boot
 
-- name: Read current cmdline.txt from microSD
+# Для Ubuntu загрузчик автоматически ищет LABEL=writable, поэтому
+# cmdline.txt не нужно изменять. Главное — что метка microSD была
+# изменена (в copy_rootfs.yml), а SSD имеет метку "writable".
+
+- name: Skip cmdline update for Ubuntu (uses LABEL auto-detection)
+  ansible.builtin.debug:
+    msg: "Ubuntu использует автоматическое определение LABEL=writable. Изменение cmdline.txt не требуется."
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - cmdline
+
+# Для Raspberry Pi OS обновляем cmdline.txt как обычно
+- name: Check cmdline.txt location (Raspberry Pi OS uses /boot)
+  ansible.builtin.stat:
+    path: "/boot/cmdline.txt"
+  register: cmdline_stat
+  when:
+    - ssd_target_os != 'ubuntu'
+  tags:
+    - cmdline
+
+- name: Read current cmdline.txt
   ansible.builtin.slurp:
-    src: "{{ boot_mount_point }}/cmdline.txt"
+    src: "/boot/cmdline.txt"
   register: cmdline_content
+  when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
   tags:
     - cmdline
 
 - name: Create backup of original cmdline.txt
   ansible.builtin.copy:
     content: "{{ cmdline_content.content }}"
-    dest: "{{ boot_mount_point }}/cmdline.txt.backup"
+    dest: "/boot/cmdline.txt.backup"
     mode: '0644'
   become: true
+  when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
   tags:
     - cmdline
 
 - name: Display current cmdline.txt
   ansible.builtin.debug:
     msg: "{{ cmdline_content.content | b64decode }}"
+  when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
   tags:
     - cmdline
 
-- name: Update cmdline.txt root parameter to use SSD PARTUUID
+- name: Update cmdline.txt root parameter to use SSD PARTUUID (Raspberry Pi OS)
   ansible.builtin.shell: |
-    sed -i 's/root=PARTUUID=[0-9a-f-]*/root=PARTUUID={{ ssd_partuuid }}/' {{ boot_mount_point }}/cmdline.txt
+    sed -i 's/root=PARTUUID=[0-9a-f-]*/root=PARTUUID={{ ssd_partuuid }}/' /boot/cmdline.txt
   become: true
   when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
     - ssd_partuuid is defined
   tags:
     - cmdline
 
 - name: Update cmdline.txt root parameter to use SSD UUID (fallback)
   ansible.builtin.shell: |
-    sed -i 's/root=UUID=[0-9a-f-]*/root=UUID={{ ssd_uuid }}/' {{ boot_mount_point }}/cmdline.txt
+    sed -i 's/root=UUID=[0-9a-f-]*/root=UUID={{ ssd_uuid }}/' /boot/cmdline.txt
   become: true
   when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
     - ssd_uuid is defined
     - ssd_partuuid is not defined
   tags:
@@ -44,22 +79,31 @@
 
 - name: Read updated cmdline.txt
   ansible.builtin.slurp:
-    src: "{{ boot_mount_point }}/cmdline.txt"
+    src: "/boot/cmdline.txt"
   register: cmdline_updated
+  when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
   tags:
     - cmdline
 
 - name: Display updated cmdline.txt
   ansible.builtin.debug:
     msg: "{{ cmdline_updated.content | b64decode }}"
+  when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
   tags:
     - cmdline
 
-- name: Verify cmdline.txt was updated
+- name: Verify cmdline.txt was updated (Raspberry Pi OS)
   ansible.builtin.assert:
     that:
       - ssd_partuuid in cmdline_updated.content | b64decode or ssd_uuid in cmdline_updated.content | b64decode
     fail_msg: "cmdline.txt не был обновлён корректно"
     quiet: true
+  when:
+    - ssd_target_os != 'ubuntu'
+    - cmdline_stat.stat.exists | default(false)
   tags:
     - cmdline

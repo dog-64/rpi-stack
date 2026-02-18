@@ -105,6 +105,15 @@
   tags:
     - prepare
 
+- name: Set filesystem label for Ubuntu
+  ansible.builtin.command: "e2label /dev/{{ ssd_partition }} {{ ubuntu_root_label }}"
+  when:
+    - not (ssd_has_ext4 | default(false) | bool)
+    - ssd_target_os == 'ubuntu'
+  become: true
+  tags:
+    - prepare
+
 - name: Get SSD UUID after formatting
   ansible.builtin.command: "blkid -s UUID -o value /dev/{{ ssd_partition }}"
   changed_when: false

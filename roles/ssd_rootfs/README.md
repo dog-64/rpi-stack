@@ -10,11 +10,18 @@
 3. Форматирует SSD в ext4 (если ещё не отформатирован)
 4. Копирует систему с microSD на SSD через rsync
 5. Обновляет fstab на SSD
-6. Обновляет cmdline.txt на microSD для загрузки с SSD
+6. Обновляет загрузочную конфигурацию для загрузки с SSD
+
+## Поддерживаемые ОС
+
+- **Ubuntu 25.10** (рекомендуется для Kubernetes)
+- Raspberry Pi OS (legacy)
+
+> **Важно:** Для Kubernetes на Raspberry Pi используйте Ubuntu 25.10, так как он предоставляет актуальную поддержку containerd и K8s компонентов на ARM64.
 
 ## Требования
 
-- Raspberry Pi 4/5 с Raspberry Pi OS
+- Raspberry Pi 4/5 с Ubuntu 25.10 или Raspberry Pi OS
 - Ansible 2.9+ на контроллере
 - SSD подключён через USB
 - root доступ на целевом хосте
@@ -29,15 +36,18 @@
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|-----------|
+| `ssd_target_os` | `ubuntu` | Целевая ОС: `ubuntu` или `rpi_os` |
 | `ssd_device` | `auto` | SSD устройство (например, `/dev/sda`) |
 | `ssd_partition` | `auto` | SSD раздел (например, `/dev/sda1`) |
 | `ssd_mount_point` | `/mnt/ssd` | Точка монтирования для операций |
-| `boot_mount_point` | `/boot/firmware` | Boot раздел на microSD |
+| `boot_mount_point` | авто | Boot раздел (авто: `/boot/firmware` для Ubuntu, `/boot` для RPi OS) |
 | `ssd_filesystem` | `ext4` | Файловая система |
 | `ssd_mount_options` | `defaults,noatime` | Опции монтирования |
 | `ssd_skip_confirmation` | `false` | Пропустить подтверждение форматирования |
 | `ssd_reboot_after_config` | `true` | Перезагрузить после конфигурации |
 | `ssd_min_free_space_ratio` | `1.1` | Минимальный коэффициент свободного места |
+| `ubuntu_root_label` | `writable` | Метка root раздела для Ubuntu |
+| `ubuntu_boot_label` | `system-boot` | Метка boot раздела для Ubuntu |
 
 ## Использование
 
@@ -65,6 +75,12 @@ ansible-playbook -i inventory.yml playbooks/ssd-migrate.yml --check
 ansible-playbook -i inventory.yml playbooks/ssd-migrate.yml -e "ssd_device=/dev/sda" -e "ssd_skip_confirmation=true"
 ```
 
+### Для Raspberry Pi OS
+
+```bash
+ansible-playbook -i inventory.yml playbooks/ssd-migrate.yml -e "ssd_target_os=rpi_os"
+```
+
 ## Теги
 
 - `detect` — Обнаружение SSD
@@ -74,7 +90,7 @@ ansible-playbook -i inventory.yml playbooks/ssd-migrate.yml -e "ssd_device=/dev/
 - `mount` — Монтирование SSD
 - `copy` — Копирование системы
 - `fstab` — Обновление fstab
-- `cmdline` — Обновление cmdline.txt
+- `cmdline` — Обновление загрузочной конфигурации
 - `verify` — Верификация
 - `cleanup` — Очистка
 
@@ -132,6 +148,16 @@ ssh dog@10.0.1.104 "df -h /"
 
 Обратите внимание на `/dev/sda2` (SSD) вместо `/dev/mmcblk0p2` (microSD).
 
+## Отличия Ubuntu от Raspberry Pi OS
+
+| Характеристика | Ubuntu 25.10 | Raspberry Pi OS |
+|----------------|--------------|-----------------|
+| Boot раздел | `/boot/firmware` | `/boot` |
+| Идентификатор раздела | LABEL | PARTUUID |
+| Метка root | `writable` | N/A |
+| Метка boot | `system-boot` | N/A |
+| Загрузочный конфиг | `/boot/firmware/cmdline.txt` | `/boot/cmdline.txt` |
+
 ## Откат
 
 Если что-то пошло не так:
@@ -139,8 +165,15 @@ ssh dog@10.0.1.104 "df -h /"
 1. Загрузитесь с microSD (уберите SSD)
 2. Восстановите cmdline.txt из backup:
 
+**Для Ubuntu:**
 ```bash
 sudo cp /boot/firmware/cmdline.txt.backup /boot/firmware/cmdline.txt
+sudo reboot
+```
+
+**Для Raspberry Pi OS:**
+```bash
+sudo cp /boot/cmdline.txt.backup /boot/cmdline.txt
 sudo reboot
 ```
 

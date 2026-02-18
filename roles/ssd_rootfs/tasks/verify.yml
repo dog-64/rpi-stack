@@ -14,31 +14,107 @@
   tags:
     - verify
 
-- name: Verify SSD fstab configuration
+- name: Verify SSD fstab configuration (Ubuntu with LABEL)
+  ansible.builtin.command: "grep -E '^LABEL={{ ubuntu_root_label }}\\s+/' {{ ssd_mount_point }}/etc/fstab"
+  changed_when: false
+  register: fstab_verify
+  failed_when: fstab_verify.rc != 0
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Verify SSD fstab configuration (Raspberry Pi OS)
   ansible.builtin.command: "grep -E '^PARTUUID={{ ssd_partuuid }}|^UUID={{ ssd_uuid }}' {{ ssd_mount_point }}/etc/fstab"
   changed_when: false
   register: fstab_verify
   failed_when: fstab_verify.rc != 0
+  when:
+    - ssd_target_os != 'ubuntu'
   tags:
     - verify
 
 - name: Display fstab verification result
   ansible.builtin.debug:
-    msg: "{{ fstab_verify.stdout_lines }}"
+    msg: "{{ fstab_verify.stdout_lines | default([]) }}"
   tags:
     - verify
 
-- name: Verify cmdline.txt configuration
-  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}|root=UUID={{ ssd_uuid }}' {{ boot_mount_point }}/cmdline.txt"
+- name: Verify boot partition entry in fstab (Ubuntu)
+  ansible.builtin.command: "grep -E '^LABEL={{ ubuntu_boot_label }}\\s+/boot/firmware' {{ ssd_mount_point }}/etc/fstab"
+  changed_when: false
+  register: boot_fstab_verify
+  failed_when: boot_fstab_verify.rc != 0
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Display boot fstab entry verification (Ubuntu)
+  ansible.builtin.debug:
+    msg: "{{ boot_fstab_verify.stdout_lines }}"
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Verify microSD label was changed (Ubuntu)
+  ansible.builtin.command: "blkid -s LABEL -o value /dev/mmcblk0p2"
+  changed_when: false
+  register: sd_label_verify
+  failed_when: sd_label_verify.rc != 0
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Verify SSD has correct label (Ubuntu)
+  ansible.builtin.command: "blkid -s LABEL -o value /dev/{{ ssd_partition }}"
+  changed_when: false
+  register: ssd_label_verify
+  failed_when: ssd_label_verify.rc != 0
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Display label verification (Ubuntu)
+  ansible.builtin.debug:
+    msg:
+      - "microSD rootfs label: {{ sd_label_verify.stdout.strip() }}"
+      - "SSD rootfs label: {{ ssd_label_verify.stdout.strip() }}"
+      - "Загрузчик выберет SSD ( LABEL=writable )"
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Check cmdline.txt exists (Raspberry Pi OS)
+  ansible.builtin.stat:
+    path: "/boot/cmdline.txt"
+  register: cmdline_stat_verify
+  when:
+    - ssd_target_os != 'ubuntu'
+  tags:
+    - verify
+
+- name: Verify cmdline.txt configuration (Raspberry Pi OS)
+  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}|root=UUID={{ ssd_uuid }}' /boot/cmdline.txt"
   changed_when: false
   register: cmdline_verify
   failed_when: cmdline_verify.rc != 0
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os != 'ubuntu'
   tags:
     - verify
 
-- name: Display cmdline.txt verification result
+- name: Display cmdline.txt verification result (Raspberry Pi OS)
   ansible.builtin.debug:
     msg: "{{ cmdline_verify.stdout_lines }}"
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os != 'ubuntu'
   tags:
     - verify
 
@@ -58,8 +134,8 @@
 - name: Verification summary
   ansible.builtin.debug:
     msg:
-      - "✓ SSD fstab настроен корректно"
-      - "✓ cmdline.txt обновлён для загрузки с SSD"
+      - "✓ SSD fstab настроен корректно ({{ 'LABEL' if ssd_target_os == 'ubuntu' else 'PARTUUID/UUID' }})"
+      - "{{ '✓ Метка microSD изменена, загрузчик выберет SSD' if ssd_target_os == 'ubuntu' else '✓ cmdline.txt обновлён для загрузки с SSD' }}"
       - "✓ Следующая перезагрузка будет с SSD ({{ ssd_partition }})"
   tags:
     - verify
