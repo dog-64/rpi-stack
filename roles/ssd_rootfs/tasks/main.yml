@@ -79,7 +79,6 @@
   become: true
   when:
     - ssd_reboot_after_config | default(true) | bool
-    - not (ssd_rootfs_exists | default(false) | bool)
   tags:
     - ssd_rootfs
     - reboot
