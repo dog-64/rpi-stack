@@ -74,6 +74,9 @@ make k3s-server
 # Установка на все agent-ноды
 ansible-playbook playbooks/k3s-install.yml --limit k3s_agent
 
+# Установка на хост motya
+ansible-playbook playbooks/k3s-install.yml --limit motya                                            
+
 # Или через Makefile
 make k3s-agents
 ```

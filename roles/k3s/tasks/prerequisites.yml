@@ -51,10 +51,73 @@
   register: cgroups_check
   changed_when: false
 
-- name: Warning if cgroup memory not enabled
+- name: Check if cgroup_memory is enabled
+  ansible.builtin.set_fact:
+    cgroup_memory_enabled: "'1' in cgroups_check.stdout"
+
+- name: Check cmdline.txt location (Ubuntu vs Raspberry Pi OS)
+  ansible.builtin.stat:
+    path: /boot/firmware/cmdline.txt
+  register: cmdline_ubuntu
+  when: not cgroup_memory_enabled
+
+- name: Check cmdline.txt location (Raspberry Pi OS)
+  ansible.builtin.stat:
+    path: /boot/cmdline.txt
+  register: cmdline_rpi
+  when: 
+    - not cgroup_memory_enabled
+    - not cmdline_ubuntu.stat.exists
+
+- name: Set cmdline.txt path
+  ansible.builtin.set_fact:
+    cmdline_path: "{{ '/boot/firmware/cmdline.txt' if cmdline_ubuntu.stat.exists else '/boot/cmdline.txt' }}"
+  when: not cgroup_memory_enabled
+
+- name: Check current cmdline.txt for cgroup settings
+  ansible.builtin.shell: grep -E 'cgroup_memory=1|cgroup_enable=memory' {{ cmdline_path }} || echo "NOT_FOUND"
+  register: cmdline_cgroup_check
+  changed_when: false
+  when: not cgroup_memory_enabled
+
+- name: Add cgroup settings to cmdline.txt
+  ansible.builtin.lineinfile:
+    path: "{{ cmdline_path }}"
+    backrefs: true
+    regexp: '^(.*)$'
+    line: '\1 cgroup_memory=1 cgroup_enable=memory'
+  become: true
+  register: cmdline_modified
+  when:
+    - not cgroup_memory_enabled
+    - "'NOT_FOUND' in cmdline_cgroup_check.stdout"
+
+- name: Reboot required for cgroup changes
   ansible.builtin.debug:
-    msg: "WARNING: cgroup_memory may need to be enabled in cmdline.txt"
-  when: "'1' not in cgroups_check.stdout"
+    msg: "cgroup_memory added to cmdline.txt. Rebooting in 5 seconds..."
+  when: 
+    - cmdline_modified is defined
+    - cmdline_modified.changed
+    - k3s_auto_reboot_cgroups | bool
+
+- name: Reboot for cgroup changes
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    connect_timeout: 10
+    test_command: whoami
+  become: true
+  when:
+    - cmdline_modified is defined
+    - cmdline_modified.changed
+    - k3s_auto_reboot_cgroups | bool
+
+- name: Fail if reboot needed for cgroups (auto-reboot disabled)
+  ansible.builtin.fail:
+    msg: "cgroup_memory enabled in cmdline.txt. Please reboot the system and run this playbook again, or set k3s_auto_reboot_cgroups=true"
+  when:
+    - cmdline_modified is defined
+    - cmdline_modified.changed
+    - not (k3s_auto_reboot_cgroups | bool)
 
 - name: Install required packages (Debian/Ubuntu)
   ansible.builtin.apt:
