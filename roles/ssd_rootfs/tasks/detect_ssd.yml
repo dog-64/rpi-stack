@@ -98,20 +98,45 @@
   tags:
     - detect
 
-- name: Find SSD partition (take last - usually rootfs)
-  ansible.builtin.shell: "lsblk /dev/{{ ssd_device }} -o NAME -n -l | tail -1"
+- name: Check if SSD has partitions
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_device }} -o NAME -n -l | grep -E '[0-9]$' | wc -l"
   changed_when: false
-  register: ssd_partition_output
+  register: ssd_partitions_count
   tags:
     - detect
 
-- name: Set SSD partition fact if auto
+- name: Set fact if SSD needs partitioning
+  ansible.builtin.set_fact:
+    ssd_needs_partition: "{{ ssd_partitions_count.stdout | int == 0 }}"
+  tags:
+    - detect
+
+- name: Find SSD partition (take last - usually rootfs)
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_device }} -o NAME -n -l | grep -E '[0-9]$' | tail -1"
+  changed_when: false
+  register: ssd_partition_output
+  when:
+    - not (ssd_needs_partition | bool)
+  tags:
+    - detect
+
+- name: Set SSD partition fact if partitions exist
   ansible.builtin.set_fact:
     ssd_partition: "{{ ssd_partition_output.stdout.strip() }}"
   when:
+    - not (ssd_needs_partition | bool)
     - ssd_partition == 'auto'
     - ssd_partition_output.stdout | default('') != ''
     - ssd_partition_output.rc == 0
+  tags:
+    - detect
+
+- name: Set SSD partition fact for new partition (will be created)
+  ansible.builtin.set_fact:
+    ssd_partition: "{{ ssd_device }}1"
+  when:
+    - ssd_needs_partition | bool
+    - ssd_partition == 'auto'
   tags:
     - detect
 
@@ -119,8 +144,8 @@
   ansible.builtin.debug:
     msg:
       - "SSD device: /dev/{{ ssd_device }}"
-      - "SSD partition output: {{ ssd_partition_output.stdout | default('empty') }}"
-      - "SSD partition var: {{ ssd_partition | default('undefined') }}"
+      - "SSD needs partitioning: {{ ssd_needs_partition | bool }}"
+      - "SSD partition: /dev/{{ ssd_partition }}"
   tags:
     - detect
 

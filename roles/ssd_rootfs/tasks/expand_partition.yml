@@ -38,9 +38,27 @@
   tags:
     - expand
 
+- name: Check if partition needs expansion
+  ansible.builtin.set_fact:
+    partition_needs_expand: "{{ current_part_size.stdout.strip() != disk_size.stdout.strip() }}"
+  tags:
+    - expand
+
+- name: Display expansion status
+  ansible.builtin.debug:
+    msg: "{{ 'Расширение требуется' if partition_needs_expand | bool else 'Раздел уже использует весь диск' }}"
+  tags:
+    - expand
+
 - name: Get partition number
   ansible.builtin.set_fact:
-    partition_number: "{{ ssd_partition | regex_replace('^.*?(\\d+)$', '\\1') }}"
+    partition_number: "{{ ssd_partition | regex_replace('^[a-z]+', '') | regex_replace('^n[0-9]+p', '') }}"
+  tags:
+    - expand
+
+- name: Display partition number
+  ansible.builtin.debug:
+    msg: "Номер раздела: {{ partition_number }}"
   tags:
     - expand
 
@@ -49,6 +67,7 @@
   become: true
   when:
     - growpart_check.rc == 0
+    - partition_needs_expand | bool
   register: growpart_result
   failed_when: 
     - growpart_result.rc != 0
@@ -58,9 +77,10 @@
 
 - name: Display growpart result
   ansible.builtin.debug:
-    msg: "{{ growpart_result.stdout if growpart_result.rc == 0 else 'Раздел уже использует весь диск или не требуется расширение' }}"
+    msg: "{{ growpart_result.stdout if (growpart_result is defined and growpart_result.rc == 0) else 'Раздел уже использует весь диск или не требуется расширение' }}"
   when:
     - growpart_check.rc == 0
+    - partition_needs_expand | bool
   tags:
     - expand
 
@@ -69,6 +89,8 @@
   become: true
   when:
     - growpart_check.rc == 0
+    - partition_needs_expand | bool
+    - growpart_result is not skipped
     - growpart_result.rc == 0 or 'CHANGED' in growpart_result.stdout | default('')
     - ssd_filesystem == 'ext4'
   register: resize_result
@@ -80,6 +102,7 @@
     msg: "Файловая система расширена: {{ resize_result.stdout_lines[-1] if (resize_result is not skipped and resize_result.rc == 0) else 'Расширение не требуется или выполнено ранее' }}"
   when:
     - growpart_check.rc == 0
+    - partition_needs_expand | bool
     - ssd_filesystem == 'ext4'
   tags:
     - expand
@@ -90,6 +113,7 @@
   register: new_part_size
   when:
     - growpart_check.rc == 0
+    - partition_needs_expand | bool
   tags:
     - expand
 
@@ -100,5 +124,6 @@
       - "Стало: {{ new_part_size.stdout | default('без изменений') }}"
   when:
     - growpart_check.rc == 0
+    - partition_needs_expand | bool
   tags:
     - expand

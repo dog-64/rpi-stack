@@ -6,6 +6,16 @@
 - **Ansible** — best practices, роли, модули, идемпотентность
 - **Raspberry Pi** — архитектура ARM, Raspberry Pi OS/Ubuntu, специфика железа
 
+- никогда не делай `ssh-keygen`
+
+---
+Если при обращении к хосту
+```
+@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!
+IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
+```
+то удали записи о хосте из `~/.ssh/known_hosts` и повтори обращение к нему
+
 ## Задачи
 
 Список задач для выполнения: **[Todo.md](Todo.md)**

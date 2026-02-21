@@ -10,14 +10,36 @@
   ansible.builtin.set_fact:
     root_usage_gb: "{{ root_usage_output.stdout | float }}"
 
-- name: Get SSD partition size in GB
+- name: Check if SSD partition exists
+  ansible.builtin.stat:
+    path: "/dev/{{ ssd_partition }}"
+  register: ssd_partition_stat
+
+- name: Get SSD partition size in GB (existing partition)
   ansible.builtin.shell: lsblk /dev/{{ ssd_partition }} -o SIZE -n -d | sed 's/G//g' | sed 's/,/./'
   changed_when: false
   register: ssd_size_output
+  when:
+    - ssd_partition_stat.stat.exists
 
-- name: Set SSD size fact
+- name: Get SSD disk size in GB (for new partition)
+  ansible.builtin.shell: lsblk /dev/{{ ssd_device }} -o SIZE -n -d | sed 's/G//g' | sed 's/,/./'
+  changed_when: false
+  register: ssd_disk_size_output
+  when:
+    - not ssd_partition_stat.stat.exists
+
+- name: Set SSD size fact (existing partition)
   ansible.builtin.set_fact:
     ssd_size_gb: "{{ ssd_size_output.stdout | float }}"
+  when:
+    - ssd_partition_stat.stat.exists
+
+- name: Set SSD size fact (disk for new partition)
+  ansible.builtin.set_fact:
+    ssd_size_gb: "{{ ssd_disk_size_output.stdout | float }}"
+  when:
+    - not ssd_partition_stat.stat.exists
 
 - name: Check if SSD has enough space
   ansible.builtin.assert:
@@ -32,7 +54,7 @@
   ansible.builtin.debug:
     msg:
       - "Текущее использование root: {{ root_usage_gb }}GB"
-      - "Размер SSD раздела: {{ ssd_size_gb }}GB"
+      - "Размер SSD {{ 'раздела' if ssd_partition_stat.stat.exists else 'диска' }}: {{ ssd_size_gb }}GB"
       - "Достаточно места: {{ (ssd_size_gb | float) >= (root_usage_gb | float * ssd_min_free_space_ratio | float) }}"
   tags:
     - check

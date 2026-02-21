@@ -43,7 +43,8 @@
 ### Установка
 
 - записываем образ на Raspberry Pi Imager - Ubuntu 25.10 Server
-- запускаем скрипт фикса сети
+
+- запускаем скрипт фикса сети - видимо это актуально только для Raspberry Pie 5
 ```shell
   sudo ./scripts/fix-sd-network.sh /dev/disk11
 ```

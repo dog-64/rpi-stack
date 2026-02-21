@@ -1,5 +1,6 @@
 ---
 # Update fstab on SSD to use SSD UUID/LABEL for root
+# CRITICAL: This file must create a valid fstab or the system will not boot
 
 - name: Get current microSD root PARTUUID/UUID
   ansible.builtin.shell: "blkid -s PARTUUID -o value /dev/mmcblk0p2"
@@ -33,84 +34,103 @@
   tags:
     - fstab
 
-- name: Remove all root entries from fstab (Ubuntu)
-  ansible.builtin.lineinfile:
-    path: "{{ ssd_mount_point }}/etc/fstab"
-    regexp: '^LABEL=[a-z-]+\\s+/\\s+ext4'
-    state: absent
-  become: true
+- name: Display original fstab
+  ansible.builtin.debug:
+    msg: "Original fstab:\n{{ fstab_content.content | b64decode }}"
+  tags:
+    - fstab
+
+- name: Build new fstab content (Ubuntu)
+  ansible.builtin.set_fact:
+    new_fstab_content: |
+      # /etc/fstab: static file system information.
+      LABEL={{ ubuntu_root_label }}	/	{{ ssd_filesystem }}	{{ ssd_mount_options }}	0	1
+      LABEL={{ ubuntu_boot_label }}	/boot/firmware	vfat	defaults	0	2
   when:
     - ssd_target_os == 'ubuntu'
   tags:
     - fstab
 
-- name: Add correct root entry to fstab (Ubuntu)
-  ansible.builtin.lineinfile:
-    path: "{{ ssd_mount_point }}/etc/fstab"
-    line: "LABEL={{ ubuntu_root_label }}\t/\t{{ ssd_filesystem }}\t{{ ssd_mount_options }}\t0\t1"
-    insertbefore: BOF
-  become: true
-  when:
-    - ssd_target_os == 'ubuntu'
-  tags:
-    - fstab
-
-- name: Remove all boot entries from fstab (Ubuntu)
-  ansible.builtin.lineinfile:
-    path: "{{ ssd_mount_point }}/etc/fstab"
-    regexp: '^[^#]+\\s+/boot/firmware\\s+vfat'
-    state: absent
-  become: true
-  when:
-    - ssd_target_os == 'ubuntu'
-  tags:
-    - fstab
-
-- name: Add correct boot entry to fstab (Ubuntu)
-  ansible.builtin.lineinfile:
-    path: "{{ ssd_mount_point }}/etc/fstab"
-    line: "LABEL={{ ubuntu_boot_label }}\t/boot/firmware\tvfat\tdefaults\t0\t2"
-    insertafter: '^LABEL={{ ubuntu_root_label }}'
-  become: true
-  when:
-    - ssd_target_os == 'ubuntu'
-  tags:
-    - fstab
-
-- name: Update fstab root entry to use SSD PARTUUID (Raspberry Pi OS)
-  ansible.builtin.lineinfile:
-    path: "{{ ssd_mount_point }}/etc/fstab"
-    regexp: '^PARTUUID=[0-9a-f-]+\\s+/\\s+'
-    line: "PARTUUID={{ ssd_partuuid }}\t/\t{{ ssd_filesystem }}\t{{ ssd_mount_options }}\t0\t1"
-  become: true
+- name: Build new fstab content (Raspberry Pi OS)
+  ansible.builtin.set_fact:
+    new_fstab_content: |
+      # /etc/fstab: static file system information.
+      PARTUUID={{ ssd_partuuid }}	/	{{ ssd_filesystem }}	{{ ssd_mount_options }}	0	1
+      PARTUUID={{ mmc_partuuid }}	/boot	vfat	defaults	0	2
   when:
     - ssd_target_os != 'ubuntu'
     - ssd_partuuid is defined
   tags:
     - fstab
 
-- name: Update fstab boot entry to use microSD PARTUUID (Raspberry Pi OS)
-  ansible.builtin.lineinfile:
-    path: "{{ ssd_mount_point }}/etc/fstab"
-    regexp: '^PARTUUID=[0-9a-f-]+\\s+{{ boot_mount_point }}\\s+'
-    line: "PARTUUID={{ mmc_partuuid }}\t{{ boot_mount_point }}\tvfat\tdefaults\t0\t2"
-  become: true
+- name: Display new fstab content
+  ansible.builtin.debug:
+    msg: "New fstab:\n{{ new_fstab_content }}"
+  tags:
+    - fstab
+
+- name: Validate new fstab has root entry
+  ansible.builtin.assert:
+    that:
+      - new_fstab_content is defined
+      - "'/' in new_fstab_content"
+      - "'ext4' in new_fstab_content or ssd_filesystem in new_fstab_content"
+    fail_msg: "CRITICAL: New fstab is missing root entry!"
+    quiet: true
+  tags:
+    - fstab
+
+- name: Validate new fstab has boot entry (Ubuntu)
+  ansible.builtin.assert:
+    that:
+      - "'/boot/firmware' in new_fstab_content"
+      - "'vfat' in new_fstab_content"
+    fail_msg: "CRITICAL: New fstab is missing boot entry!"
+    quiet: true
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - fstab
+
+- name: Validate new fstab has boot entry (Raspberry Pi OS)
+  ansible.builtin.assert:
+    that:
+      - "'/boot' in new_fstab_content"
+      - "'vfat' in new_fstab_content"
+    fail_msg: "CRITICAL: New fstab is missing boot entry!"
+    quiet: true
   when:
     - ssd_target_os != 'ubuntu'
-    - mmc_partuuid is defined
   tags:
     - fstab
 
-- name: Display fstab changes
-  ansible.builtin.command: "cat {{ ssd_mount_point }}/etc/fstab"
-  changed_when: false
-  register: fstab_display
+- name: Write new fstab to SSD
+  ansible.builtin.copy:
+    content: "{{ new_fstab_content }}"
+    dest: "{{ ssd_mount_point }}/etc/fstab"
+    mode: '0644'
   become: true
   tags:
     - fstab
 
-- name: Show updated fstab
+- name: Verify fstab was written correctly
+  ansible.builtin.slurp:
+    src: "{{ ssd_mount_point }}/etc/fstab"
+  register: fstab_verify
+  tags:
+    - fstab
+
+- name: Display written fstab
   ansible.builtin.debug:
-    var: fstab_display.stdout_lines
+    msg: "Written fstab:\n{{ fstab_verify.content | b64decode }}"
+  tags:
+    - fstab
+
+- name: Verify fstab content matches expected
+  ansible.builtin.assert:
+    that:
+      - fstab_verify.content | b64decode | trim == new_fstab_content | trim
+    fail_msg: "CRITICAL: Written fstab does not match expected content!"
+    quiet: true
   tags:
     - fstab

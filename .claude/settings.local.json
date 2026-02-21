@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:forums.raspberrypi.com)",
+      "WebFetch(domain:forum.snapcraft.io)",
+      "WebFetch(domain:cloudinit.readthedocs.io)",
+      "WebFetch(domain:systemd.io)",
+      "WebFetch(domain:manshurtigh.se)",
+      "WebFetch(domain:www.freedesktop.org)",
+      "Bash(ansible sema -b -m shell -a:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(ansible sema:*)",
+      "Bash(ssh:*)",
+      "Bash(ping:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:bugs.launchpad.net)",
+      "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nfix: Миграция Raspberry Pi rootfs на USB SSD - исправление проблем загрузки\n\nКлючевые улучшения роли ssd_rootfs и процесса миграции:\n\n- Исправлена detect_ssd.yml: добавлена проверка определения переменной \n  перед использованием, правильный порядок ошибок \\(fail перед use\\)\n\n- Исправлена expand_partition.yml: обработка пропущенного переменного \n  resize_result когда раздел уже использует весь диск\n\n- Улучшена detect_ssd.yml: добавлено обнаружение количества разделов, \n  обработка новых несуществующих разделов, поддержка авто-разметки\n\n- Улучшена check_space.yml: поддержка как существующих так и новых SSD разделов\n\n- Переписана prepare_ssd.yml с критическими улучшениями:\n  * Проверка наличия ext4 файловой системы для пропуска форматирования\n  * Пропуск изменения метки если ext4 отсутствует\n  * Получение UUID и PARTUUID до и после форматирования\n  * Безопасная обработка уже существующих разделов\n\n- Улучшена update_fstab.yml для большей надёжности:\n  * Правильное удаление/добавление записей fstab без дубликатов\n  * Лучшая обработка ошибок при отсутствии записей\n  * Чистое управление состоянием\n\n- Расширена verify.yml с комплексной проверкой:\n  * Проверка существования и монтирования boot раздела\n  * Критические assertions для boot раздела\n  * Детальная валидация fstab \\(ровно одна запись root/boot\\)\n  * Проверка метак \\(критично для выбора загрузчиком\\)\n  * Правильное обнаружение статуса загрузки\n  * Подробная сводка проверки\n\n- Добавлен docs/ssd-migration-log.md: полная пошаговая документация миграции \n  motya \\(RPi4\\) с демонстрацией правильной процедуры и регенерацией initramfs\n\nКлючевое открытие: регенерация initramfs через chroot критична после \nкопирования rootfs на SSD. Без неё initramfs не может разрешить метки/UUID \nкорневого устройства и загрузка зависает или падает.\n\nУспешная миграция motya \\(Raspberry Pi 4, Ubuntu 25.10, kernel 6.17.0\\):\n- rootfs перенесена с microSD на USB SSD\n- Время загрузки: 45 секунд до graphical.target\n- Все netfilter модули \\(br_netfilter, ip_tables, nf_tables\\) присутствуют \n  и работают - совместимо с k3s/kubernetes\n\nCo-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>\nEOF\n\\)\" 2>&1)"
+    ]
+  }
+}

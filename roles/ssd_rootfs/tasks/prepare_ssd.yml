@@ -1,6 +1,89 @@
 ---
 # Prepare SSD - check existing filesystem or format
 
+- name: Check if partition exists
+  ansible.builtin.stat:
+    path: "/dev/{{ ssd_partition }}"
+  register: partition_stat
+  tags:
+    - prepare
+
+- name: Display partition status
+  ansible.builtin.debug:
+    msg: "Раздел /dev/{{ ssd_partition }} {{ 'существует' if partition_stat.stat.exists else 'НЕ существует, будет создан' }}"
+  tags:
+    - prepare
+
+- name: Warn about partitioning
+  ansible.builtin.debug:
+    msg: "ВНИМАНИЕ: На диске /dev/{{ ssd_device }} БУДЕТ СОЗДАН НОВЫЙ РАЗДЕЛ. Все данные на диске будут потеряны!"
+  when:
+    - not partition_stat.stat.exists
+    - not (ssd_skip_confirmation | bool)
+  tags:
+    - prepare
+
+- name: Request confirmation for partitioning
+  ansible.builtin.pause:
+    prompt: "Создать раздел на /dev/{{ ssd_device }}? (yes/no)"
+    echo: yes
+  register: partition_confirm
+  when:
+    - not partition_stat.stat.exists
+    - not (ssd_skip_confirmation | bool)
+  tags:
+    - prepare
+
+- name: Abort if partitioning confirmation denied
+  ansible.builtin.fail:
+    msg: "Создание раздела отменено пользователем"
+  when:
+    - not partition_stat.stat.exists
+    - not (ssd_skip_confirmation | bool)
+    - partition_confirm.user_input | lower != 'yes'
+  tags:
+    - prepare
+
+- name: Create partition table and partition on SSD
+  block:
+    - name: Unmount SSD device if mounted
+      ansible.builtin.shell: "umount /dev/{{ ssd_device }}* 2>/dev/null || true"
+      become: true
+      changed_when: true
+
+    - name: Wipe existing partition table
+      ansible.builtin.command: "wipefs -a /dev/{{ ssd_device }}"
+      become: true
+      changed_when: true
+      failed_when: false
+
+    - name: Create GPT partition table
+      ansible.builtin.command: "parted /dev/{{ ssd_device }} --script mklabel gpt"
+      become: true
+
+    - name: Create primary partition using entire disk
+      ansible.builtin.command: "parted /dev/{{ ssd_device }} --script mkpart primary ext4 0% 100%"
+      become: true
+
+    - name: Inform kernel about partition changes
+      ansible.builtin.command: "partprobe /dev/{{ ssd_device }}"
+      become: true
+      failed_when: false
+
+    - name: Wait for partition device to appear
+      ansible.builtin.wait_for:
+        path: "/dev/{{ ssd_partition }}"
+        state: present
+        timeout: 30
+
+    - name: Display partition created
+      ansible.builtin.debug:
+        msg: "Создан раздел /dev/{{ ssd_partition }}"
+  when:
+    - not partition_stat.stat.exists
+  tags:
+    - prepare
+
 - name: Get SSD partition UUID and filesystem info
   ansible.builtin.command: "blkid -o export /dev/{{ ssd_partition }}"
   changed_when: false
@@ -135,6 +218,54 @@
 - name: Display SSD UUID
   ansible.builtin.debug:
     msg: "SSD UUID: {{ ssd_uuid }}"
+  tags:
+    - prepare
+
+- name: Verify SSD has correct label (Ubuntu)
+  block:
+    - name: Get current SSD label
+      ansible.builtin.shell: "e2label /dev/{{ ssd_partition }}"
+      changed_when: false
+      register: ssd_current_label
+
+    - name: Display current label
+      ansible.builtin.debug:
+        msg: "Current SSD label: {{ ssd_current_label.stdout }}"
+
+    - name: Set correct label if needed (Ubuntu)
+      ansible.builtin.command: "e2label /dev/{{ ssd_partition }} {{ ubuntu_root_label }}"
+      become: true
+      when:
+        - ssd_current_label.stdout != ubuntu_root_label
+      register: label_changed
+
+    - name: Display label change
+      ansible.builtin.debug:
+        msg: "SSD label changed from '{{ ssd_current_label.stdout }}' to '{{ ubuntu_root_label }}'"
+      when:
+        - label_changed is changed
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - prepare
+
+- name: Verify SSD label is correct (Ubuntu)
+  ansible.builtin.shell: "e2label /dev/{{ ssd_partition }}"
+  changed_when: false
+  register: ssd_final_label
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - prepare
+
+- name: Assert SSD has correct label (Ubuntu)
+  ansible.builtin.assert:
+    that:
+      - ssd_final_label.stdout == ubuntu_root_label
+    fail_msg: "CRITICAL: SSD label '{{ ssd_final_label.stdout }}' does not match required '{{ ubuntu_root_label }}'. System will not boot from SSD!"
+    quiet: true
+  when:
+    - ssd_target_os == 'ubuntu'
   tags:
     - prepare
 
