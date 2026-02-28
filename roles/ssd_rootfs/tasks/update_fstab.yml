@@ -1,8 +1,25 @@
 ---
-# Update fstab on SSD to use SSD UUID/LABEL for root
+# Update fstab on SSD to use PARTUUID for both Ubuntu and Raspberry Pi OS
 # CRITICAL: This file must create a valid fstab or the system will not boot
+# NOTE: Ubuntu uses PARTUUID in fstab (not LABEL) for deterministic behaviour
 
-- name: Get current microSD root PARTUUID/UUID
+- name: Get microSD boot PARTUUID (Ubuntu uses /boot/firmware)
+  ansible.builtin.shell: "blkid -s PARTUUID -o value /dev/mmcblk0p1"
+  changed_when: false
+  register: mmc_boot_partuuid_output
+  failed_when: false
+  tags:
+    - fstab
+
+- name: Set microSD boot PARTUUID fact
+  ansible.builtin.set_fact:
+    mmc_boot_partuuid: "{{ mmc_boot_partuuid_output.stdout.strip() }}"
+  when:
+    - mmc_boot_partuuid_output.rc == 0
+  tags:
+    - fstab
+
+- name: Get microSD root PARTUUID (for Raspberry Pi OS)
   ansible.builtin.shell: "blkid -s PARTUUID -o value /dev/mmcblk0p2"
   changed_when: false
   register: mmc_partuuid_output
@@ -10,7 +27,7 @@
   tags:
     - fstab
 
-- name: Set microSD PARTUUID fact
+- name: Set microSD root PARTUUID fact
   ansible.builtin.set_fact:
     mmc_partuuid: "{{ mmc_partuuid_output.stdout.strip() }}"
   when:
@@ -40,14 +57,17 @@
   tags:
     - fstab
 
-- name: Build new fstab content (Ubuntu)
+- name: Build new fstab content (Ubuntu - uses PARTUUID)
   ansible.builtin.set_fact:
     new_fstab_content: |
       # /etc/fstab: static file system information.
-      LABEL={{ ubuntu_root_label }}	/	{{ ssd_filesystem }}	{{ ssd_mount_options }}	0	1
-      LABEL={{ ubuntu_boot_label }}	/boot/firmware	vfat	defaults	0	2
+      # Ubuntu uses PARTUUID for deterministic mounting (not LABEL)
+      PARTUUID={{ ssd_partuuid }}	/	{{ ssd_filesystem }}	{{ ssd_mount_options }}	0	1
+      PARTUUID={{ mmc_boot_partuuid }}	/boot/firmware	vfat	defaults	0	2
   when:
     - ssd_target_os == 'ubuntu'
+    - ssd_partuuid is defined
+    - mmc_boot_partuuid is defined
   tags:
     - fstab
 

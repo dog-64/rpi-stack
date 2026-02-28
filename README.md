@@ -50,10 +50,109 @@
 ```
 
 - загружаемся с micro SD
-- запускаем Ansible по переключению на SSD как на системный
-```shell
-ansible-playbook playbooks/ssd-migrate.yml -i inventory.yml --limit leha   
+- при необходимости мигрируем на SSD (см. [Migration manual](#миграция-с-microsd-на-ssd))
+
+**Для подготовки к K3s:**
+```bash
+# Обновляем систему
+ansible-playbook playbooks/update-all.yml --limit <HOST>
+
+# Фикс локали
+ansible-playbook playbooks/fix-locale.yml --limit <HOST>
+
+# Проверяем информацию о системе
+ansible-playbook playbooks/system-info.yml --limit <HOST>
 ```
+
+## Миграция с microSD на SSD
+
+Для улучшения производительности и долговечности системы рекомендуется перенести корневую файловую систему с microSD на SSD.
+
+### Миграция вручную
+
+Подробное руководство с пошаговой инструкцией:
+[→ Migration manual](docs/ssd-migration-manual.md)
+
+### Миграция с Ansible Playbook
+
+**Playbooks:**
+- `playbooks/ssd-migrate.yml` - основная миграция на SSD
+- `playbooks/verify-ssd.yml` - проверка предпосылок и верификация
+
+**Ключевые параметры:**
+```bash
+# Проверить подключен ли SSD (предварительно)
+ansible-playbook playbooks/verify-ssd.yml -i inventory.yml --limit <HOST>
+
+# Запустить миграцию с указанием устройства
+ansible-playbook playbooks/ssd-migrate.yml -i inventory.yml \
+  --limit <HOST> \
+  -e ssd_device=sda \
+  -e ssd_partition=auto
+
+# Запуск с подтверждением (для безопасности)
+ansible-playbook playbooks/ssd-migrate.yml -i inventory.yml \
+  --limit <HOST> \
+  -e ssd_skip_confirmation=false
+
+# Автоматическая перезагрузка после миграции
+ansible-playbook playbooks/ssd-migrate.yml -i inventory.yml \
+  --limit <HOST> \
+  -e ssd_reboot_after_config=true
+```
+
+**Примеры использования:**
+```bash
+# Миграция хоста leha с автоопределением SSD
+ansible-playbook playbooks/ssd-migrate.yml -i inventory.yml --limit leha
+
+# Миграция всех Pi 5 с SSD = sdb
+ansible-playbook playbooks/ssd-migrate.yml -i inventory.yml --limit pi5 \
+  -e ssd_device=sdb
+
+# Проверка статуса после миграции
+ansible-playbook playbooks/verify-ssd.yml -i inventory.yml --limit leha
+```
+
+**Дополнительные опции:**
+- `ssd_mount_point` - точка монтирования SSD (по умолчанию `/mnt/ssd`)
+- `ssd_min_free_space_ratio` - минимальный коэффициент свободного места (1.1 по умолчанию)
+- `ssd_reboot_delay` - задержка перед перезагрузкой (5 секунд по умолчанию)
+
+> **Важно:** Playbook использует ту же логику что и ручной метод:
+> - Boot раздел остается на microSD (`PARTUUID=6d3d7424-01`)
+> - Rootfs переносится на SSD с использованием `PARTUUID`
+> - Автоматический откат через изменение LABEL на microSD
+
+### Проверка статуса
+
+```bash
+# Проверить какой диск используется как корень
+ansible active -a "df /"
+
+# Проверить PARTUUID всех разделов
+ansible active -a "sudo blkid -o list"
+
+# Проверить метки (LABEL) дисков
+ansible active -a "sudo blkid | grep LABEL"
+
+# Вручную проверить на хосте
+ssh <HOST> "lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,PARTUUID,MOUNTPOINT"
+```
+
+### Откат
+
+При необходимости вернуться на microSD:
+```bash
+# Изменить LABEL microSD обратно на "writable"
+ansible active -e ssd_device=/dev/mmcblk0p2 -a "sudo tune2fs -L writable /dev/mmcblk0p2"
+
+# Перезагрузка (systemd автоматически выберет microSD)
+ansible active -b -m reboot
+```
+
+---
+[Структура кластера](#структура-кластера)
 
 ### Установка k3s (Kubernetes)
 

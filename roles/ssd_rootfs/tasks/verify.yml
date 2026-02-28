@@ -118,8 +118,8 @@
   tags:
     - verify
 
-- name: Verify SSD fstab configuration (Ubuntu with LABEL)
-  ansible.builtin.command: "grep -E '^LABEL={{ ubuntu_root_label }}\\s+/' {{ ssd_mount_point }}/etc/fstab"
+- name: Verify SSD fstab configuration (Ubuntu with PARTUUID)
+  ansible.builtin.command: "grep -E '^PARTUUID={{ ssd_partuuid }}\\s+/' {{ ssd_mount_point }}/etc/fstab"
   changed_when: false
   register: fstab_verify
   failed_when: fstab_verify.rc != 0
@@ -145,8 +145,8 @@
   tags:
     - verify
 
-- name: Verify boot partition entry in fstab (Ubuntu)
-  ansible.builtin.command: "grep -E '^LABEL={{ ubuntu_boot_label }}\\s+/boot/firmware' {{ ssd_mount_point }}/etc/fstab"
+- name: Verify boot partition entry in fstab (Ubuntu with PARTUUID)
+  ansible.builtin.command: "grep -E '^PARTUUID={{ mmc_boot_partuuid }}\\s+/boot/firmware' {{ ssd_mount_point }}/etc/fstab"
   changed_when: false
   register: boot_fstab_verify
   failed_when: boot_fstab_verify.rc != 0
@@ -247,8 +247,9 @@
 - name: Verification summary
   ansible.builtin.debug:
     msg:
-      - "✓ SSD fstab настроен корректно ({{ 'LABEL' if ssd_target_os == 'ubuntu' else 'PARTUUID/UUID' }})"
-      - "{{ '✓ Метка microSD изменена, загрузчик выберет SSD' if ssd_target_os == 'ubuntu' else '✓ cmdline.txt обновлён для загрузки с SSD' }}"
+      - "✓ SSD fstab настроен корректно (PARTUUID)"
+      - "{{ '✓ Метка microSD изменена (writable-sd), загрузчик выберет SSD по LABEL=writable' if ssd_target_os == 'ubuntu' else '✓ cmdline.txt обновлён для загрузки с SSD' }}"
+      - "✓ fstab использует PARTUUID для deterministic mounting"
       - "✓ Следующая перезагрузка будет с SSD ({{ ssd_partition }})"
   tags:
     - verify

@@ -39,8 +39,7 @@ ssd_reboot_after_config: true
 ssd_reboot_delay: 5
 
 # Ubuntu specific: Label names for root and boot partitions
+# NOTE: Ubuntu uses PARTUUID in fstab (not LABEL) for deterministic behaviour
+# Labels are still used by initramfs for emergency boot
 ubuntu_root_label: writable
 ubuntu_boot_label: system-boot
-
-# Use LABEL instead of PARTUUID (Ubuntu uses LABEL)
-ssd_use_label: "{{ ssd_target_os == 'ubuntu' }}"

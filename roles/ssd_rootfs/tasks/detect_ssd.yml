@@ -44,10 +44,16 @@
   tags:
     - detect
 
-- name: Find SSD devices (grep for sd*)
-  ansible.builtin.shell: lsblk -d -o NAME,TYPE -n | grep 'disk$' | grep -E '^sd' | awk '{print $1}'
+- name: Find SSD devices
+  ansible.builtin.shell: "lsblk -d -o NAME,TYPE -n | grep 'disk$' | grep -E '^sd[ab]' | awk '{print $1}'"
   changed_when: false
   register: ssd_candidates_output
+  tags:
+    - detect
+
+- name: Display SSD candidates
+  ansible.builtin.debug:
+    msg: "SSD candidates: {{ ssd_candidates_output.stdout_lines }}"
   tags:
     - detect
 
