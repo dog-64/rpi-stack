@@ -81,7 +81,6 @@
   register: mmc_boot_partuuid_output
   when:
     - ssd_target_os == 'ubuntu'
-    - not (ssd_rootfs_exists | bool)
     - sd_label_changed is changed
   tags:
     - copy
@@ -93,7 +92,6 @@
   register: mmc_root_partuuid_output
   when:
     - ssd_target_os == 'ubuntu'
-    - not (ssd_rootfs_exists | bool)
     - sd_label_changed is changed
   tags:
     - copy
@@ -104,7 +102,6 @@
     mmc_root_partuuid: "{{ mmc_root_partuuid_output.stdout }}"
   when:
     - ssd_target_os == 'ubuntu'
-    - not (ssd_rootfs_exists | bool)
     - sd_label_changed is changed
   tags:
     - copy
@@ -124,7 +121,6 @@
   become: true
   when:
     - ssd_target_os == 'ubuntu'
-    - not (ssd_rootfs_exists | bool)
     - sd_label_changed is changed
   tags:
     - copy
@@ -134,7 +130,6 @@
     msg: "microSD fstab обновлен с PARTUUID для избежания проблем при загрузке с SSD"
   when:
     - ssd_target_os == 'ubuntu'
-    - not (ssd_rootfs_exists | bool)
     - sd_label_changed is changed
   tags:
     - copy
