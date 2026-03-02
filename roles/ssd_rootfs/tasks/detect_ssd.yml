@@ -1,12 +1,6 @@
 ---
 # Detect SSD device and partition
 
-- name: Initialize migration state facts
-  ansible.builtin.set_fact:
-    ssd_rootfs_exists: false
-  tags:
-    - detect
-
 - name: Get current root device
   ansible.builtin.shell: df / | tail -1 | awk '{print $1}'
   changed_when: false
