@@ -1,6 +1,22 @@
 ---
 # Cleanup and finalization
 
+# Проверка и исправление файловой системы microSD (для предотвращения повреждений при извлечении)
+- name: Check if system is booting from microSD
+  ansible.builtin.shell: df / | tail -1 | awk '{print $1}'
+  register: current_root_device
+  changed_when: false
+  tags:
+    - cleanup
+
+- name: Check and repair microSD filesystem if booting from microSD
+  ansible.builtin.shell: "fsck -y /dev/mmcblk0p2"
+  become: true
+  when:
+    - "'/dev/mmcblk0p2' in current_root_device.stdout"
+  tags:
+    - cleanup
+
 - name: Unmount SSD partition
   ansible.builtin.mount:
     path: "{{ ssd_mount_point }}"
