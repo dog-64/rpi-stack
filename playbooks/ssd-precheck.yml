@@ -1,0 +1,182 @@
+---
+# Проверка SSD перед миграцией
+#
+# Запуск:
+#   ansible-playbook playbooks/ssd-precheck.yml -l <HOST>
+#
+# Проверяет:
+#   - SSD обнаружен
+#   - Скорость чтения > 100 MB/sec
+#   - Нет I/O ошибок
+#   - USB 3.0 подключение
+#   - Правильный драйвер
+
+- name: Проверка SSD перед миграцией
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    # Устройство SSD для проверки (автоопределение или явно)
+    ssd_device: auto
+    ssd_partition: auto
+
+  pre_tasks:
+    - name: Отображение информации о хосте
+      ansible.builtin.debug:
+        msg: "Хост: {{ inventory_hostname }}, IP: {{ ansible_host }}"
+
+  tasks:
+    - name: Получить список блочных устройств
+      ansible.builtin.command: lsblk -d -o NAME,SIZE,TYPE -n
+      changed_when: false
+      register: block_devices
+
+    - name: Показать блочные устройства
+      ansible.builtin.debug:
+        msg: "{{ block_devices.stdout_lines }}"
+
+    - name: Найти SSD устройства (sd* диски)
+      ansible.builtin.shell: "lsblk -d -o NAME,TYPE -n | grep 'disk$' | grep -E '^sd[a-z]' | awk '{print $1}'"
+      changed_when: false
+      register: ssd_candidates
+
+    - name: Установить факт SSD устройства
+      ansible.builtin.set_fact:
+        ssd_device_name: "{{ ssd_candidates.stdout_lines[0] }}"
+      when:
+        - ssd_candidates.stdout_lines | length > 0
+
+    - name: Сообщение если SSD не найден
+      ansible.builtin.fail:
+        msg: "SSD не найден! Подключи SSD и попробуй снова."
+      when:
+        - ssd_candidates.stdout_lines | length == 0
+
+    - name: Показать обнаруженный SSD
+      ansible.builtin.debug:
+        msg: "Обнаружен SSD: /dev/{{ ssd_device_name }}"
+
+    # ========== ПРОВЕРКА 1: SSD виден и имеет разделы ==========
+    - name: Получить разделы SSD
+      ansible.builtin.command: "lsblk /dev/{{ ssd_device_name }} -o NAME,SIZE -n -l"
+      changed_when: false
+      register: ssd_partitions
+
+    - name: Показать разделы SSD
+      ansible.builtin.debug:
+        msg: "{{ ssd_partitions.stdout_lines }}"
+
+    - name: Найти rootfs раздел SSD (обычно последний)
+      ansible.builtin.shell: "lsblk /dev/{{ ssd_device_name }} -o NAME -n -l | grep -E '[0-9]$' | tail -1"
+      changed_when: false
+      register: ssd_root_part
+      failed_when: ssd_root_part.rc != 0 or ssd_root_part.stdout == ""
+
+    - name: Установить полный путь к разделу
+      ansible.builtin.set_fact:
+        ssd_partition_full: "/dev/{{ ssd_root_part.stdout }}"
+
+    - name: Показать раздел для проверки
+      ansible.builtin.debug:
+        msg: "Проверяю раздел: {{ ssd_partition_full }}"
+
+    # ========== ПРОВЕРКА 2: Скорость чтения (ПРОВЕРКА РАБОТОСПОСОБНОСТИ) ==========
+    - name: Проверить скорость чтения SSD
+      ansible.builtin.command: "hdparm -t {{ ssd_partition_full }}"
+      changed_when: false
+      failed_when: false
+      register: hdparm_result
+
+    - name: Извлечь скорость из hdparm
+      ansible.builtin.set_fact:
+        ssd_speed_mb: "{{ hdparm_result.stdout | regex_search('=\\s*\\d+\\.\\d+\\s*MB/sec') | regex_replace('=\\s*(\\d+\\.\\d+)\\s*MB/sec', '\\1') }}"
+
+    - name: Показать скорость SSD
+      ansible.builtin.debug:
+        msg: "Скорость SSD: {{ ssd_speed_mb }} MB/sec"
+
+    - name: Проверка скорости (должно быть > 80 MB/sec)
+      ansible.builtin.assert:
+        that:
+          - ssd_speed_mb | float > 80
+        fail_msg: "❌ Скорость слишком низкая: {{ ssd_speed_mb }} MB/sec (ожидалось > 80)"
+        quiet: true
+
+    # ========== ПРОВЕРКА 3: Свежие I/O ошибки (ПОСЛЕ теста скорости) ==========
+    - name: Проверить свежие I/O ошибки (только последнюю минуту)
+      ansible.builtin.shell: "dmesg --since '1 minute ago' -T | grep -E '(I/O error|Device off|Buffer I/O)' | grep -i '{{ ssd_device_name }}' || echo 'NO_ERRORS'"
+      changed_when: false
+      register: io_errors_fresh
+      failed_when: false
+
+    - name: Показать найденные свежие ошибки
+      ansible.builtin.debug:
+        msg: "{{ io_errors_fresh.stdout_lines }}"
+      when: io_errors_fresh.stdout_lines | length > 0
+
+    - name: Установить факт наличия ошибок
+      ansible.builtin.set_fact:
+        has_io_errors: "{{ 'NO_ERRORS' not in io_errors_fresh.stdout }}"
+
+    - name: Проверка на отсутствие свежих I/O ошибок
+      ansible.builtin.assert:
+        that:
+          - not has_io_errors
+        fail_msg: "❌ Найдены СВЕЖИЕ I/O ошибки! Проверь адаптер/кабель/питание."
+        quiet: true
+
+    # ========== ПРОВЕРКА 4: USB подключение ==========
+    - name: Проверить USB топологию
+      ansible.builtin.shell: "lsusb -t | grep -A2 'Mass Storage'"
+      changed_when: false
+      register: usb_topology
+
+    - name: Показать USB топологию
+      ansible.builtin.debug:
+        msg: "{{ usb_topology.stdout }}"
+
+    - name: Проверить USB 3.0 (5000M)
+      ansible.builtin.assert:
+        that:
+          - "'5000M' in usb_topology.stdout"
+        fail_msg: "❌ SSD не на USB 3.0! Используй синий порт."
+        quiet: true
+
+    - name: Проверить драйвер uas
+      ansible.builtin.assert:
+        that:
+          - "'Driver=uas' in usb_topology.stdout"
+        fail_msg: "⚠️ Используется usb-storage вместо uas (медленнее)"
+        quiet: true
+      ignore_errors: true
+
+    # ========== ИТОГИ ==========
+    - name: Итоги проверки
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "   SSD PRE-CHECK РЕЗУЛЬТАТЫ"
+          - "=========================================="
+          - "Хост: {{ inventory_hostname }}"
+          - "SSD: /dev/{{ ssd_device_name }}"
+          - "Раздел: {{ ssd_partition_full }}"
+          - "Скорость: {{ ssd_speed_mb }} MB/sec {% if ssd_speed_mb | float > 150 %}✅{% elif ssd_speed_mb | float > 80 %}⚠️{% else %}❌{% endif %}"
+          - "USB: 3.0 ✅"
+          - "I/O ошибки: {% if not has_io_errors %}Нет ✅{% else %}ДА ❌{% endif %}"
+          - "=========================================="
+          - "{% if not has_io_errors and ssd_speed_mb | float > 80 %}✅ SSD ГОТОВ К МИГРАЦИИ{% else %}❌ SSD НЕ ГОТОВ{% endif %}"
+          - "=========================================="
+
+    - name: Сообщить об успехе
+      ansible.builtin.debug:
+        msg: "✅ SSD прошел проверку! Можно запускать миграцию: ansible-playbook playbooks/ssd-migrate.yml -l {{ inventory_hostname }}"
+      when:
+        - not has_io_errors
+        - ssd_speed_mb | float > 80
+
+    - name: Сообщить о проблемах
+      ansible.builtin.fail:
+        msg: "❌ SSD НЕ ГОТОВ К МИГРАЦИИ. Исправь проблемы и запусти проверку снова."
+      when:
+        - has_io_errors or ssd_speed_mb | float <= 80

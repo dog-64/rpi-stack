@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+- когда смотришь проблемы на microsd - смотри и логи загрузки
+- после каждого изменения записивай краткое описание в docs/changelog.md
+- прежде чем начать программировать подумай
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Роль: Senior DevOps Engineer
@@ -74,3 +78,30 @@ ansible -i inventory all -m ping
 - Тестируйте playbooks в режиме `--check` перед применением
 - Используйте осмысленные имена для tasks и playbooks
 - Документируйте сложные задачи в комментариях
+
+## Специализированные агенты
+
+### rp-searcher — Raspberry Pi Troubleshooter
+
+Глобально установленный агент для поиска решений проблем с Raspberry Pi.
+
+**Когда использовать:**
+- I/O ошибки на SSD/storage
+- Проблемы с загрузкой (boot)
+- Ошибки сети/WiFi/Bluetooth
+- Проблемы с GPU/дисплеем
+- Вопросы по совместимости железа
+- Ubuntu на Raspberry Pi особенности
+
+**Что ищет:**
+- Форумы Raspberry Pi, Stack Exchange, AskUbuntu
+- GitHub issues (raspberrypi/linux, u-boot, rpi-eeprom)
+- Баг-трекеры Ubuntu (Launchpad)
+- Специализированные ресурсы (jamesachambers.com, jeffgeerling.com)
+
+**Расположение:** `~/.claude/agents/rp-searcher.md`
+
+**Использование:**
+```
+Используй агента rp-searcher для поиска решения [описание проблемы]
+```

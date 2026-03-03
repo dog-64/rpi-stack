@@ -118,19 +118,7 @@ EOF
 echo "      network-config записан:"
 cat "$MOUNT_POINT/network-config"
 
-# Восстанавливаем cmdline.txt если он был испорчен предыдущей версией скрипта
-echo "[4/4] Проверяю cmdline.txt..."
-if [ -f "$MOUNT_POINT/cmdline.txt" ]; then
-    CMDLINE=$(cat "$MOUNT_POINT/cmdline.txt")
-
-    if [[ "$CMDLINE" =~ "network-config=" ]]; then
-        echo "      Обнаружен повреждённый cmdline.txt, восстанавливаю..."
-        cp "$MOUNT_POINT/cmdline.txt" "$MOUNT_POINT/cmdline.txt.broken"
-        FIXED_CMDLINE=$(echo "$CMDLINE" | sed -E 's/[[:space:]]*network-config=\{config:[[:space:]]*disabled\}//g; s/[[:space:]]*network-config=[^[:space:]]*//g; s/[[:space:]]*disabled\}//g' | sed 's/  */ /g; s/^ *//; s/ *$//')
-        echo "$FIXED_CMDLINE" > "$MOUNT_POINT/cmdline.txt"
-        echo "      cmdline.txt восстановлен"
-    fi
-fi
+echo "[4/4] Проверка завершена"
 
 # Размонтировать
 echo ""

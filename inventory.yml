@@ -23,7 +23,7 @@ all:
             - "Raspberry Pi Connect"
 
         motya:
-          ansible_host: 10.0.1.56
+          ansible_host: 10.0.1.55
           hostname: p56
           model: "Raspberry Pi 4"
           memory: "8GB"
