@@ -101,6 +101,67 @@ cat /boot/firmware/cmdline.txt
 # Должен содержать: root=LABEL=writable или root=PARTUUID=...
 ```
 
+---
+
+## 2026-03-05: motya не загружается — пустой machine-id
+
+### Контекст:
+- **Хост:** motya (Raspberry Pi 4, Ubuntu)
+- **Проблема:** Сервисы не стартуют, система зависает на чёрном экране
+- **Действия:** После исправления cmdline.txt система всё равно не грузилась
+
+### Диагностика:
+- cmdline.txt — ✅ исправлен (оба файла)
+- fstab — ✅ правильный
+- Файловая система — ✅ чистая после fsck
+- Bad blocks — ✅ 0
+- Journal — ❌ пустой (система никогда не грузилась)
+- **`/etc/machine-id`** — ❌ **ПУСТОЙ ФАЙЛ (0 bytes)**
+
+### Корневая причина:
+**Systemd требует уникальный machine-id для работы!**
+
+Без machine-id:
+- Сервисы не стартуют
+- Journal не пишется
+- Systemd не работает правильно
+- Система не может завершить загрузку
+
+### Решение:
+```bash
+# Сгенерировать новый machine-id
+uuidgen | tr -d '-' > /etc/machine-id
+
+# Скопировать для dbus
+cp /etc/machine-id /var/lib/dbus/machine-id
+
+# Или на загруженной системе:
+# systemd-machine-id-setup
+```
+
+### Правило на будущее:
+```
+ПРИ ПРОВЕРКЕ microSD ВСЕГДА проверять:
+1. cmdline.txt — содержит root=?
+2. fstab — правильный?
+3. /etc/machine-id — НЕ ПУСТОЙ?
+
+cat /etc/machine-id
+# Должен быть 32 символа hex (не пустой)
+```
+
+### Как проверить machine-id:
+```bash
+# Размер должен быть > 0
+ls -la /etc/machine-id
+
+# Содержимое должно быть 32 символа hex
+cat /etc/machine-id
+# Пустой файл = система не загрузится!
+```
+
+---
+
 ### ВАЖНО: Ubuntu tryboot механизм
 
 **Ubuntu на Raspberry Pi использует ДВА cmdline.txt файла:**
