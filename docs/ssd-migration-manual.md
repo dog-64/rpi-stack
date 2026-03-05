@@ -16,9 +16,13 @@
 
 ## ⚠️ Проверка SSD перед миграцией
 
-> **ВАЖНО:** Перед началом миграции проверь SSD, адаптер и кабель!
+> **КРИТИЧЕСКИ ВАЖНО:** Прочитай [→ Lessons Learned](lessons-learned.md) перед миграцией!
+> Там описаны ошибки которые уже были сделаны — не повторяй их.
 >
-> Подробная инструкция: [→ SSD Pre-check Guide](ssd-precheck.md)
+> Проверь SSD, адаптер и кабель:
+> - [→ Lessons Learned (ошибки)](lessons-learned.md)
+> - [→ SSD Pre-check Guide](ssd-precheck.md)
+> - [→ USB Adapters Tested](usb-adapters-tested.md)
 >
 > **Краткая проверка:**
 > ```bash

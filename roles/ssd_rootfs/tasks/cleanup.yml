@@ -9,11 +9,18 @@
   tags:
     - cleanup
 
-- name: Check and repair microSD filesystem if booting from microSD
+- name: Check if microSD rootfs is mounted
+  ansible.builtin.shell: "mount | grep '/dev/mmcblk0p2' || echo 'NOT_MOUNTED'"
+  register: sd_mount_status
+  changed_when: false
+  tags:
+    - cleanup
+
+- name: Check and repair microSD filesystem if NOT mounted
   ansible.builtin.shell: "fsck -y /dev/mmcblk0p2"
   become: true
   when:
-    - "'/dev/mmcblk0p2' in current_root_device.stdout"
+    - sd_mount_status.stdout == 'NOT_MOUNTED'
   tags:
     - cleanup
 

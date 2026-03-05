@@ -70,8 +70,10 @@ ansible-playbook playbooks/system-info.yml --limit <HOST>
 
 ### ⚠️ Проверка SSD перед миграцией
 
-**ПЕРЕД началом миграции** обязательно проверь SSD:
-[→ SSD Pre-check Guide](docs/ssd-precheck.md)
+**ПЕРЕД началом миграции** обязательно прочитай:
+[→ Lessons Learned (ошибки и решения)](docs/lessons-learned.md) — **что НЕ надо делать**
+[→ SSD Pre-check Guide](docs/ssd-precheck.md) — проверка SSD
+[→ USB Adapters Tested](docs/usb-adapters-tested.md) — какие адаптеры работают
 
 ### Миграция вручную
 

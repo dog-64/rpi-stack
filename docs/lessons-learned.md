@@ -1,0 +1,109 @@
+# Lessons Learned — Ошибки и решения
+
+Этот документ содержит извлеченные уроки из работы с Raspberry Pi кластером.
+**Цель:** не повторять одни и те же ошибки.
+
+---
+
+## 2026-03-04: osya не загружается после USB quirks
+
+### Контекст:
+- **Хост:** osya (Raspberry Pi 4, 10.0.1.75)
+- **SSD:** 119GB Apacer, через VIA VL817 адаптер (2109:0715)
+- **Проблема:** скорость SSD 8.5 MB/sec вместо ожидаемых 100+
+- **Система:** Ubuntu, загружена с SSD (/dev/sda2)
+
+> **Решение:** Замена адаптера на ASMedia (174c:235c) дала 197 MB/sec.
+> Подробности о протестированных адаптерах: [→ usb-adapters-tested.md](usb-adapters-tested.md)
+
+### Что сделал:
+1. Создал `/etc/modprobe.d/disable-uas-vl817.conf` с `options usb_storage quirks=2109:0715:u`
+2. Обновил initramfs
+3. Перезагрузил
+4. **Не проверил решение перед применением**
+5. **Не использовал rp-search агента**
+6. **Не спросил подтверждение**
+
+### Результат:
+- osya не загрузился
+- SSD с UAS quirks стал недоступен после перезагрузки
+- quirks отключили UAS, но система уже загружалась через UAS
+
+### Что должен был сделать:
+1. **rp-search агент:** "USB quirks 2109:0715:u Raspberry Pi 4 safe breaks boot"
+2. **Предложить альтернативы:**
+   - Другой USB-SATA адаптер (JMS578 на sema/leha работает)
+   - Тест на motya (не в продакшене)
+3. **Спросить подтверждение** для изменения modprobe.d
+
+### Правило на будущее:
+```
+ПЕРЕД изменением modprobe.d, cmdline.txt, fstab:
+1. rp-search — что говорят про решение?
+2. Альтернативы — есть ли другой способ?
+3. Тест — на нерабочей системе
+4. Подтверждение — пользователя
+```
+
+---
+
+## Общие правила
+
+### Критичные конфигурационные файлы (осторожно!):
+- `/etc/modprobe.d/*` — модули ядра
+- `/boot/firmware/cmdline.txt` — параметры загрузки
+- `/etc/fstab` — монтирование файловых систем
+- `tune2fs -L` — изменение меток разделов
+
+### Перед изменением:
+1. **rp-search** — что говорят про это решение?
+2. **Альтернативы** — есть ли другой способ?
+3. **Тест** — проверить на системе которая не в продакшене
+4. **Откат** — как откатить если что-то пойдет не так?
+
+### После изменения:
+- Записать в `docs/changelog.md`
+
+---
+
+## 2026-03-05: osya не загружается после миграции SSD
+
+### Контекст:
+- **Хост:** osya (Raspberry Pi 4, Ubuntu)
+- **SSD:** ASMedia адаптер (174c:235c), 197 MB/sec ✅
+- **Проблема:** После миграции система не загрузилась (SSH connection refused)
+
+### Что сделал:
+1. Запустил плейбук ssd-migrate.yml
+2. Плейбук завершился успешно
+3. **НЕ ПРОВЕРИЛ cmdline.txt на microSD ПЕРЕД завершением**
+4. **НЕ добавил задачу проверки cmdline.txt в плейбук**
+
+### В чём проблема:
+**Ubuntu на Raspberry Pi использует `/boot/firmware/cmdline.txt`, а не `/boot/cmdline.txt`**
+
+Если в cmdline.txt нет `root=PARTUUID=SSD_PARTUUID`, система не найдёт rootfs на SSD.
+
+### Что должно быть в cmdline.txt на microSD:
+```
+root=PARTUUID=<SSD_PARTUUID> rootfstype=ext4 rootwait ...
+```
+
+### Правило на будущее:
+```
+ПЕРЕД завершением миграции SSD (ОБЯЗАТЕЛЬНО):
+1. Проверить /boot/firmware/cmdline.txt на microSD содержит root=PARTUUID=SSD
+2. Если нет — добавить/исправить
+3. ТОЛЬКО ПОСЛЕ этого завершать миграцию
+```
+
+### В плейбук ssd-migrate.yml добавить:
+```yaml
+# ПЕРЕД задачей "Display completion message" добавить:
+- name: CRITICAL - Verify cmdline.txt has root=PARTUUID for SSD
+  ansible.builtin.shell: "grep 'root=PARTUUID={{ ssd_root_partuuid }}' /boot/firmware/cmdline.txt"
+  register: cmdline_check
+  failed_when: cmdline_check.rc != 0
+```
+
+---

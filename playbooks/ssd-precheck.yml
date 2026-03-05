@@ -126,7 +126,55 @@
         fail_msg: "❌ Найдены СВЕЖИЕ I/O ошибки! Проверь адаптер/кабель/питание."
         quiet: true
 
-    # ========== ПРОВЕРКА 4: USB подключение ==========
+    # ========== ПРОВЕРКА 4: SMART статус SSD ==========
+    - name: Установить smartmontools если нет
+      ansible.builtin.apt:
+        name: smartmontools
+        state: present
+        update_cache: false
+      become: true
+      register: smart_install
+      until: smart_install is succeeded
+      retries: 2
+      delay: 5
+
+    - name: Проверить SMART статус SSD
+      ansible.builtin.shell:
+        cmd: smartctl -H /dev/{{ ssd_device_name }} | grep 'overall-health'
+      changed_when: false
+      register: smart_health
+      failed_when: false
+
+    - name: Показать SMART статус
+      ansible.builtin.debug:
+        msg: "SMART: {{ smart_health.stdout }}"
+
+    - name: Проверить что SSD прошёл SMART тест
+      ansible.builtin.assert:
+        that:
+          - "'PASSED' in smart_health.stdout"
+        fail_msg: "❌ SMART тест провален! SSD可能有 bad blocks."
+        quiet: true
+
+    - name: Проверить reallocoted sectors
+      ansible.builtin.shell:
+        cmd: smartctl -A /dev/{{ ssd_device_name }} | grep 'Reallocated_Sector_Ct'
+      changed_when: false
+      register: realloc_sectors
+      failed_when: false
+
+    - name: Показать realloc sectors info
+      ansible.builtin.debug:
+        msg: "Reallocated: {{ realloc_sectors.stdout }}"
+
+    - name: Проверить отсутствие bad blocks
+      ansible.builtin.assert:
+        that:
+          - "' 0' in realloc_sectors.stdout"
+        fail_msg: "❌ Есть bad blocks! {{ realloc_sectors.stdout }}"
+        quiet: true
+
+    # ========== ПРОВЕРКА 5: USB подключение ==========
     - name: Проверить USB топологию
       ansible.builtin.shell: "lsusb -t | grep -A2 'Mass Storage'"
       changed_when: false
@@ -164,8 +212,10 @@
           - "Скорость: {{ ssd_speed_mb }} MB/sec {% if ssd_speed_mb | float > 150 %}✅{% elif ssd_speed_mb | float > 80 %}⚠️{% else %}❌{% endif %}"
           - "USB: 3.0 ✅"
           - "I/O ошибки: {% if not has_io_errors %}Нет ✅{% else %}ДА ❌{% endif %}"
+          - "SMART: {% if 'PASSED' in smart_health.stdout %}PASSED ✅{% else %}FAILED ❌{% endif %}"
+          - "Bad blocks: {% if ' 0' in realloc_sectors.stdout %}Нет ✅{% else %}Есть ❌{% endif %}"
           - "=========================================="
-          - "{% if not has_io_errors and ssd_speed_mb | float > 80 %}✅ SSD ГОТОВ К МИГРАЦИИ{% else %}❌ SSD НЕ ГОТОВ{% endif %}"
+          - "{% if not has_io_errors and ssd_speed_mb | float > 80 and 'PASSED' in smart_health.stdout and ' 0' in realloc_sectors.stdout %}✅ SSD ГОТОВ К МИГРАЦИИ{% else %}❌ SSD НЕ ГОТОВ{% endif %}"
           - "=========================================="
 
     - name: Сообщить об успехе
@@ -174,9 +224,10 @@
       when:
         - not has_io_errors
         - ssd_speed_mb | float > 80
+        - "'PASSED' in smart_health.stdout"
 
     - name: Сообщить о проблемах
       ansible.builtin.fail:
         msg: "❌ SSD НЕ ГОТОВ К МИГРАЦИИ. Исправь проблемы и запусти проверку снова."
       when:
-        - has_io_errors or ssd_speed_mb | float <= 80
+        - has_io_errors or ssd_speed_mb | float <= 80 or "'PASSED' not in smart_health.stdout" or (' 0' not in realloc_sectors.stdout)

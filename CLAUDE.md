@@ -1,8 +1,18 @@
 # CLAUDE.md
 
 - когда смотришь проблемы на microsd - смотри и логи загрузки
-- после каждого изменения записивай краткое описание в docs/changelog.md
+- после каждого изменения записывай краткое описание в docs/changelog.md
 - прежде чем начать программировать подумай
+
+## ⚠️ КРИТИЧНО — читать ПЕРЕД любыми действиями:
+
+**docs/lessons-learned.md** — ошибки которые НЕЛЬЗЯ повторять
+**docs/usb-adapters-tested.md** — какие адаптеры работают
+
+## Особо важно для SSD миграции:
+- Ubuntu использует `/boot/firmware/cmdline.txt`, НЕ `/boot/cmdline.txt`
+- ПЕРЕД завершением миграции: проверять cmdline.txt содержит root=PARTUUID=SSD
+- ПЕРЕД изменениями: rp-search агент для проверки решения
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

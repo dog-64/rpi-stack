@@ -1,5 +1,24 @@
 # Changelog - SSD Migration Project
 
+## 2026-03-05 - osya успешно мигрирован на SSD
+
+**Что сделано:**
+1. Заменён VIA VL817 адаптер на ASMedia (174c:235c) — скорость 8→178 MB/sec
+2. Исправлен cmdline.txt на microSD (добавлен root=PARTUUID)
+3. Запущена миграция через ssd-migrate.yml
+4. Проверка: 178 MB/sec, USB 3.0, нет I/O ошибок
+
+**Проблемы которые были:**
+- VIA VL817 адаптер: 8 MB/sec (заменён на ASMedia)
+- cmdline.txt на microSD содержал только cfg80211.ieee80211_regdom=RU (нет root=)
+- fix-sd-network.sh не проверяет cmdline.txt
+
+**Записи в lessons-learned.md:**
+- VIA VL817 проблемный на Pi 4 → ASMedia работает
+- Проверять cmdline.txt содержит root= перед завершением миграции
+
+---
+
 ## 2026-03-03 19:30 - Создана документация по проверке SSD
 
 **Что сделано:**
