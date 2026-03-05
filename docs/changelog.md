@@ -1,5 +1,25 @@
 # Changelog - SSD Migration Project
 
+## 2026-03-05 19:00 - motya microSD исправлена
+
+**Проблема:** motya не загружался
+
+**Диагностика:**
+- cmdline.txt на boot разделе содержал только `cfg80211.ieee80211_regdom=RU`
+- Отсутствовал параметр `root=` — система не знала откуда грузить rootfs
+- Это свежая установка Ubuntu (не мигрирована на SSD)
+
+**Причина:** Скрипт `fix-sd-network.sh` перезаписал cmdline.txt, потеряв оригинальную конфигурацию
+
+**Решение:** Восстановлен cmdline.txt:
+```
+console=serial0,115200 multipath=off dwc_otg.lpm_enable=0 console=tty1 root=LABEL=writable rootfstype=ext4 panic=10 rootwait fixrtc cfg80211.ieee80211_regdom=RU
+```
+
+**Действия:** microSD готова для установки в motya
+
+---
+
 ## 2026-03-05 - osya успешно мигрирован на SSD
 
 **Что сделано:**

@@ -47,6 +47,62 @@
 
 ---
 
+## 2026-03-05: motya не загружается — cmdline.txt перезаписан
+
+### Контекст:
+- **Хост:** motya (Raspberry Pi 4, Ubuntu)
+- **Проблема:** Свежая установка Ubuntu с microSD не загружается
+- **Действия:** Запускался fix-sd-network.sh на Mac для настройки сети
+
+### Диагностика:
+- `/boot/firmware/cmdline.txt` содержал только `cfg80211.ieee80211_regdom=RU`
+- **Отсутствовал параметр `root=`** — система не знала откуда грузить rootfs
+- В `current/cmdline.txt` была правильная строка с `root=LABEL=writable`
+
+### Причина:
+Фактическая причина неизвестна. Скрипт `fix-sd-network.sh` **НЕ трогает** cmdline.txt
+(проверен код — пишет только meta-data и network-config).
+
+Возможно:
+- Ручное редактирование cmdline.txt для добавления cfg80211 параметра
+- Использование другого скрипта/инструкции
+- Ошибка при копировании/восстановлении
+
+### Решение:
+Восстановил cmdline.txt из current/:
+```bash
+console=serial0,115200 multipath=off dwc_otg.lpm_enable=0 console=tty1 root=LABEL=writable rootfstype=ext4 panic=10 rootwait fixrtc cfg80211.ieee80211_regdom=RU
+```
+
+### Правило на будущее:
+```
+НЕ ПЕРЕЗАПИСЫВАТЬ cmdline.txt!
+
+Для добавления cfg80211.ieee80211_regdom=RU:
+1. Прочитать текущий cmdline.txt
+2. Добавить cfg80211.ieee80211_regdom=RU в КОНЕЦ строки
+3. НЕ удалять существующие параметры (особенно root=)
+```
+
+### Правильный способ добавить cfg80211:
+```bash
+# Прочитать текущую строку
+CURRENT=$(cat /boot/firmware/cmdline.txt)
+
+# Добавить cfg80211 если его нет
+if [[ ! "$CURRENT" =~ cfg80211.ieee80211_regdom ]]; then
+    echo "$CURRENT cfg80211.ieee80211_regdom=RU" > /boot/firmware/cmdline.txt
+fi
+```
+
+### После fix-sd-network.sh ВСЕГДА проверять:
+```bash
+cat /boot/firmware/cmdline.txt
+# Должен содержать: root=LABEL=writable или root=PARTUUID=...
+```
+
+---
+
 ## Общие правила
 
 ### Критичные конфигурационные файлы (осторожно!):
