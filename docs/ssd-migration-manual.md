@@ -534,6 +534,26 @@ Ubuntu 25.10 использует **tryboot** механизм:
 - `/boot/firmware/new/` — новая конфигурация (после обновлений)
 - Автоматический откат при неудачной загрузке
 
+> **ВАЖНО: ДВА cmdline.txt файла!**
+>
+> Ubuntu хранит cmdline.txt в **ДВУХ местах**:
+> - `/boot/firmware/cmdline.txt` — основной файл
+> - `/boot/firmware/current/cmdline.txt` — резервная копия
+>
+> **При boot система может откатывать из `current/` в основной!**
+>
+> **При редактировании cmdline.txt ВСЕГДА обновляйте ОБА файла:**
+> ```bash
+> # Обновить основной
+> sudo nano /boot/firmware/cmdline.txt
+> # Скопировать в current/
+> sudo cp /boot/firmware/cmdline.txt /boot/firmware/current/cmdline.txt
+> # Sync на диск
+> sync
+> ```
+>
+> **Если обновить только один файл — изменения будут потеряны при следующей загрузке!**
+
 ### Как работает загрузка с SSD:
 
 1. **Boot partition** остаётся на microSD (`LABEL=system-boot`, `PARTUUID=6d3d7424-01`)

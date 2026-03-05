@@ -29,7 +29,16 @@ sudo ./scripts/fix-sd-network.sh /dev/diskX
 - Монтирует boot-раздел SD карты
 - Проверяет и обновляет `meta-data` (добавляет `instance-id` если отсутствует)
 - Создаёт правильный `network-config` с DHCP
-- Восстанавливает `cmdline.txt` если он был повреждён предыдущей версией скрипта
+- **Проверяет `cmdline.txt` на наличие `root=` параметра**
+- **Предлагает восстановить `cmdline.txt` из `current/` если повреждён**
+
+> **ВАЖНО: Ubuntu использует два cmdline.txt файла!**
+>
+> Ubuntu на Raspberry Pi хранит `cmdline.txt` в **ДВУХ местах**:
+> - `/boot/firmware/cmdline.txt` — основной
+> - `/boot/firmware/current/cmdline.txt` — резервная копия
+>
+> **При редактировании ВСЕГДА обновляйте ОБА файла, иначе изменения будут потеряны при загрузке!**
 
 ---
 
