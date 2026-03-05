@@ -101,6 +101,26 @@ cat /boot/firmware/cmdline.txt
 # Должен содержать: root=LABEL=writable или root=PARTUUID=...
 ```
 
+### ВАЖНО: Ubuntu tryboot механизм
+
+**Ubuntu на Raspberry Pi использует ДВА cmdline.txt файла:**
+- `/boot/firmware/cmdline.txt` — основной
+- `/boot/firmware/current/cmdline.txt` — резервный (backup)
+
+**При boot система может откатывать из `current/` в основной!**
+
+**При редактировании ОБЯЗАТЕЛЬНО обновить ОБА файла:**
+```bash
+# Обновить основной
+echo "params" > /boot/firmware/cmdline.txt
+# Обновить резервный
+echo "params" > /boot/firmware/current/cmdline.txt
+# Sync на диск
+sync
+```
+
+**Иначе изменения будут потеряны при следующей загрузке!**
+
 ---
 
 ## Общие правила
