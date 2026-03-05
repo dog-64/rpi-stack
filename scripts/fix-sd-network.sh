@@ -118,7 +118,51 @@ EOF
 echo "      network-config записан:"
 cat "$MOUNT_POINT/network-config"
 
-echo "[4/4] Проверка завершена"
+# Проверяем cmdline.txt - критически важный файл!
+echo "[4/5] Проверяю cmdline.txt..."
+CMDLINE_FILE="$MOUNT_POINT/cmdline.txt"
+
+if [ ! -f "$CMDLINE_FILE" ]; then
+    echo "      ВНИМАНИЕ: cmdline.txt не найден!"
+    echo "      Это может означать проблему с boot разделом."
+elif [ ! -s "$CMDLINE_FILE" ]; then
+    echo "      ВНИМАНИЕ: cmdline.txt пустой!"
+    echo "      Это критическая проблема - система не загрузится!"
+else
+    CMDLINE_CONTENT=$(cat "$CMDLINE_FILE")
+    echo "      Текущий cmdline.txt:"
+    echo "      $CMDLINE_CONTENT"
+
+    # Проверяем наличие root= параметра
+    if [[ ! "$CMDLINE_CONTENT" =~ root= ]]; then
+        echo ""
+        echo "      ========================================"
+        echo "      ОШИБКА: cmdline.txt НЕ содержит root=!"
+        echo "      ========================================"
+        echo ""
+        echo "      Система НЕ ЗАГРУЗИТСЯ без этого параметра!"
+        echo ""
+        echo "      В current/cmdline.txt должна быть правильная строка."
+        echo "      Скопируйте её и добавьте cfg80211 параметр:"
+        echo ""
+        if [ -f "$MOUNT_POINT/current/cmdline.txt" ]; then
+            CURRENT_CMDLINE=$(cat "$MOUNT_POINT/current/cmdline.txt")
+            echo "      Рекомендуемая строка:"
+            echo "      $CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU"
+            echo ""
+            echo "      Исправить автоматически? (y/n)"
+            read -r answer
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                echo "$CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU" > "$CMDLINE_FILE"
+                echo "      cmdline.txt исправлен!"
+            fi
+        fi
+    else
+        echo "      OK: cmdline.txt содержит root="
+    fi
+fi
+
+echo "[5/5] Проверка завершена"
 
 # Размонтировать
 echo ""
