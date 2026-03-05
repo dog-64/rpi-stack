@@ -14,7 +14,7 @@
 
 **Автоматически (Ansible):**
 ```bash
-ansible-playbook playbooks/ssd-precheck.yml -i inventory.yml --limit <HOST>
+ansible-playbook playbooks/ssd-precheck.yml --limit <HOST>
 ```
 
 **Вручную:**
