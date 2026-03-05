@@ -153,12 +153,30 @@ else
             echo "      Исправить автоматически? (y/n)"
             read -r answer
             if [[ "$answer" =~ ^[Yy]$ ]]; then
-                echo "$CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU" > "$CMDLINE_FILE"
-                echo "      cmdline.txt исправлен!"
+                # Исправляем ОБОИ cmdline.txt файла!
+                CMDLINE_FIXED="$CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU"
+                echo "$CMDLINE_FIXED" > "$CMDLINE_FILE"
+                echo "$CMDLINE_FIXED" > "$MOUNT_POINT/current/cmdline.txt"
+                sync
+                echo "      cmdline.txt ИСПРАВЛЕН (оба файла)!"
             fi
+        else
+            echo "      ОШИБКА: current/cmdline.txt не найден!"
+            echo "      Восстановление невозможно без источника."
         fi
     else
         echo "      OK: cmdline.txt содержит root="
+        # Проверяем что current/cmdline.txt тоже содержит cfg80211
+        if [ -f "$MOUNT_POINT/current/cmdline.txt" ]; then
+            CURRENT_CONTENT=$(cat "$MOUNT_POINT/current/cmdline.txt")
+            if [[ ! "$CURRENT_CONTENT" =~ cfg80211.ieee80211_regdom ]]; then
+                echo "      ВНИМАНИЕ: current/cmdline.txt НЕ содержит cfg80211!"
+                echo "      Копирую cmdline.txt в current/..."
+                cp "$CMDLINE_FILE" "$MOUNT_POINT/current/cmdline.txt"
+                sync
+                echo "      current/cmdline.txt обновлён!"
+            fi
+        fi
     fi
 fi
 
