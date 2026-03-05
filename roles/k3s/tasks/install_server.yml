@@ -1,4 +1,6 @@
 ---
+# Получаем токен только если устанавливаем agent на уже работающий server
+# Для первой установки server токен будет создан автоматически
 - name: Get k3s node token from server
   ansible.builtin.slurp:
     src: /var/lib/rancher/k3s/server/node-token
@@ -6,12 +8,16 @@
   delegate_to: "{{ groups['k3s_server'][0] }}"
   run_once: true
   become: true
-  when: k3s_token == ""
+  when:
+    - k3s_token == ""
+    - inventory_hostname in groups.get('k3s_server', [])
+  failed_when: false
 
 - name: Set k3s token fact
   ansible.builtin.set_fact:
     k3s_token_value: "{{ k3s_token if k3s_token != '' else k3s_node_token.content | b64decode | trim }}"
-  when: k3s_token != "" or k3s_node_token is defined
+  when:
+    - k3s_token != "" or (k3s_node_token is defined and 'content' in k3s_node_token)
 
 - name: Build server install command
   ansible.builtin.set_fact:
