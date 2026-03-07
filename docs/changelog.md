@@ -1,5 +1,224 @@
 # Changelog - SSD Migration Project
 
+## 2026-03-07 23:00 - УСПЕШНАЯ миграция motya на SSD
+
+**Результат:** ✅ Motya загружается с SSD (/dev/sda2)
+
+**Правильная процедура (проверено на Ubuntu 25.10):**
+
+1. Скопировать rootfs на SSD: `rsync -axHAWX`
+2. Обновить fstab на SSD с **PARTUUID**
+3. Проверить hostname, machine-id на SSD
+4. Обновить **ОБА** cmdline.txt файла на microSD с **PARTUUID** SSD
+5. Изменить LABEL на microSD на `writable-sd`
+6. Пройти полный чеклист перед перезагрузкой
+7. Перезагрузить
+
+**Критичные параметры:**
+
+| Параметр | Значение motya |
+|----------|----------------|
+| Root устройство | `/dev/sda2` (SSD) ✅ |
+| Boot устройство | `/dev/mmcblk0p1` (microSD) ✅ |
+| microSD LABEL | `writable-sd` ✅ |
+| SSD LABEL | `writable` ✅ |
+| cmdline.txt | `root=PARTUUID=cc15fd91-e0ce-4651-bcd1-d018d708bea8` ✅ |
+| fstab | `PARTUUID=cc15fd91-e0ce-4651-bcd1-d018d708bea8` ✅ |
+| hostname | `motya` ✅ |
+| machine-id | `2bf129d7ad98480da64455a731feadd2` ✅ |
+
+**Ограничение:** SSD скорость 34 MB/sec (USB 2.0) - нормально для Raspberry Pi 4
+
+**Обновлено:**
+- `ssd-migration-log.md` - правильная процедура миграции
+- Playbook `ssd-migrate.yml` - проверен и работает
+- Playbook `verify-ssd.yml` - подтверждает загрузку с SSD ✅
+
+---
+
+## 2026-03-06 13:00 - Обнаружена и задокументирована ДВОЙНАЯ КОНФИГУРАЦИЯ
+
+**Проблема:** motya бесконечно перезагружался несмотря на все исправления
+
+**Корневая причина:** cmdline.txt на microSD был исправлен, но на SSD остались старые значения!
+
+| Файл | microSD | SSD | Проблема |
+|------|---------|-----|----------|
+| cmdline.txt | ✅ Исправлен | ❌ `console=serial0`, `root=LABEL=writable` | Конфликт! |
+
+**Почему это произошло:**
+- Ubuntu на Raspberry Pi имеет boot разделы на **ОБОИХ** носителях
+- microSD cmdline.txt → используется при загрузке
+- SSD cmdline.txt → используется системой ПОСЛЕ загрузки
+- Я проверял и исправлял только microSD, забыл про SSD!
+
+**Что добавлено в документацию:**
+
+**`filesystem-health-check.md`:**
+- Раздел про двойную конфигурацию (таблица файлов на ОБАИХ носителях)
+- ШАГ 5.5: Обновление cmdline.txt на SSD
+- Чеклист: проверка идентичности cmdline.txt на microSD и SSD
+
+**`ssd-migration-checklist.md`:**
+- Раздел "ДВОЙНАЯ КОНФИГУРАЦИЯ — microSD И SSD"
+- Таблица: какие файлы на каком носителе находятся
+- Команда проверки идентичности cmdline.txt
+
+**Правило:**
+```
+ПРИ ИЗМЕНЕНИИ ЗАГРУЗОЧНЫХ ПАРАМЕТРОВ — обновлять на ОБАИХ носителях:
+
+diff /boot/firmware/cmdline.txt /mnt/ssd/boot/firmware/cmdline.txt
+# Должен быть пустой вывод = файлы идентичны
+```
+
+---
+
+## 2026-03-06 12:00 - Добавлены проверки параметров ПЕРЕЗАГРУЗКИ
+
+**Проблема:** motya бесконечно перезагружался из-за нескольких неочевидных проблем
+
+**Обнаруженные проблемы:**
+1. `console=serial0,115200` — UART не отвечал → "Порт UART не найден" → перезагрузка
+2. `panic=10` — при любой ошибке перезагрузка через 10 сек → не видно ошибку
+3. hostname=`sema` на motya — сетевой конфликт → k3s падал → перезагрузка
+4. k3s сервисы от sema — неправильный конфиг → крах сервиса → перезагрузка
+
+**Что добавлено в документацию:**
+
+**`filesystem-health-check.md`:**
+- Раздел "Проверки параметров вызывающих ПЕРЕЗАГРУЗКУ"
+- Проверка console параметров (serial0 вызывает зависание!)
+- Проверка panic параметра (10 скрывает ошибки!)
+- Проверка hostname/machine-id (конфликты!)
+- Проверка конфликтующих сервисов (k3s, docker)
+- Единая команда проверки всех параметров
+
+**`ssd-migration-checklist.md`:**
+- Проверка #7: Console check
+- Проверка #8: Hostname и machine-id
+- Проверка #9: Конфликтующие сервисы
+- Проверка #10: Единая команда ВСЕХ проверок
+
+**Критичные правила:**
+- ❌ НЕ использовать `console=serial0` (используйте `console=tty1`)
+- ❌ НЕ использовать `panic=10` при отладке (используйте `panic=-1`)
+- ❌ НЕ копировать hostname/machine-id с другого хоста
+- ❌ НЕ оставлять k3s от другого хоста на SSD
+
+---
+
+## 2026-03-06 11:00 - Добавлена документация по СОГЛАСОВАННЫМ изменениям
+
+**Причина:** Многократные циклы "изменить → перезагрузиться → FAIL" из-за проверки только одного файла
+
+**Что добавлено в `filesystem-health-check.md`:**
+- Раздел "СОГЛАСОВАННОЕ изменение конфигурационных файлов"
+- Таблица взаимосвязанных файлов (cmdline.txt, fstab, LABELS, PARTUUID)
+- Последовательность согласованного изменения (7 шагов)
+- Чеклист проверки ВСЕХ файлов ПЕРЕД перезагрузкой
+
+**Что добавлено в `ssd-migration-checklist.md`:**
+- Единая команда проверки ВСЕХ 7 файлов одновременно
+- Правило: НЕ изменять по одному файлу за раз
+- Предупреждение про поэтапный "поиск" проблем
+
+**Ключевой принцип:**
+```
+❌ НЕПРАВИЛЬНО: cmdline → перезагрузка → FAIL → fstab → перезагрузка → FAIL → LABEL → ...
+✅ ПРАВИЛЬНО:    проверить ВСЕ → изменить ВСЕ → проверить ВСЕ → перезагрузка
+```
+
+---
+
+## 2026-03-06 10:00 - Исправлен playbook update_cmdline.yml
+
+**Проблема:** Playbook пропускал обновление cmdline.txt для Ubuntu ("LABEL auto-detection")
+
+**Исправления в `roles/ssd_rootfs/tasks/update_cmdline.yml`:**
+1. ✅ Удалён пропуск Ubuntu — ВСЕГДА обновляем cmdline.txt
+2. ✅ Получаем PARTUUID SSD динамически через `blkid`
+3. ✅ Изменяем LABEL на microSD на `writable-sd` (избегаем конфликт)
+4. ✅ Обновляем ОБА cmdline.txt файла (Ubuntu tryboot: cmdline.txt + current/)
+5. ✅ Используем явный `root=PARTUUID=` вместо LABEL
+6. ✅ Добавлены CRITICAL assert проверки после каждого шага
+
+**Исправления в `roles/ssd_rootfs/tasks/verify.yml`:**
+1. ✅ Добавлена проверка cmdline.txt для Ubuntu
+2. ✅ Добавлена проверка current/cmdline.txt для Ubuntu tryboot
+3. ✅ Assert вызывает ошибку если PARTUUID не найден
+
+**Теперь playbook НЕЛЬЗЯ запустить без верификации:**
+- Если cmdline.txt не содержит root=PARTUUID=SSD → playbook FAIL
+- Если current/cmdline.txt не содержит root=PARTUUID=SSD → playbook FAIL
+- Если microSD LABEL = writable → playbook FAIL
+
+---
+
+## 2026-03-06 09:45 - Создан SSD Migration Checklist
+
+**Причина:** Многократные проблемы с загрузкой после миграции из-за пропущенных проверок
+
+**Что сделано:**
+- Создан `docs/ssd-migration-checklist.md` — обязательные проверки ПЕРЕД перезагрузкой
+- Добавлена ссылка в ssd-migration-manual.md
+
+**Содержание чеклиста:**
+1. ✅ Проверка cmdline.txt (ОБА файла!) содержит root=PARTUUID=SSD
+2. ✅ Проверка PARTUUID соответствует SSD
+3. ✅ Проверка LABEL: microSD ≠ writable, SSD = writable
+4. ✅ Проверка fstab на SSD
+5. ✅ Проверка что rootfs скопирован
+6. ✅ Проверка initramfs
+
+**Bug обнаружен:** `update_cmdline.yml` пропускает Ubuntu ("LABEL auto-detection")
+→ Всегда обновлять cmdline.txt вручную!
+
+---
+
+## 2026-03-06 - Добавлена документация по проверке файловой системы
+
+**Что сделано:**
+1. Создан `docs/filesystem-health-check.md` — проверка состояния ФС
+2. Добавлены ссылки между документами:
+   - ssd-migration-manual.md → filesystem-health-check.md
+   - ssd-precheck.md → filesystem-health-check.md
+   - lessons-learned.md → filesystem-health-check.md
+
+**Содержимое filesystem-health-check.md:**
+- Проверка флага "clean" в ext4 superblock (`tune2fs`)
+- Проверка через fsck без исправления (`fsck -n`)
+- Проверка bad blocks (`badblocks`)
+- Рекомендации перед извлечением карты
+
+**Связь с другими документами:**
+- SSD Migration Manual — проверка SSD перед/после миграции
+- SSD Precheck — проверка перед началом работ
+- Lessons Learned — случаи неправильного размонтирования
+
+---
+
+## 2026-03-05 21:00 - fix-sd-network.sh исправлен
+
+**Проблема:** Скрипт не исправлял cmdline.txt если current/cmdline.txt тоже был повреждён
+
+**Диагностика:**
+- Скрипт брал `CURRENT_CMDLINE` из `current/cmdline.txt` как источник "правильной" строки
+- Если оба файла содержали только `cfg80211`, то и "исправленная" версия была неправильной
+- Не было верификации после записи
+
+**Исправления:**
+1. Добавлена проверка: если `current/cmdline.txt` не содержит `root=`, используется стандартная строка
+2. Добавлена верификация после записи (проверка что файл действительно записан)
+3. Сообщение об успехе изменено на "cmdline.txt ИСПРАВЛЕН и ПРОВЕРЕН"
+
+**Стандартная cmdline:**
+```bash
+console=serial0,115200 multipath=off dwc_otg.lpm_enable=0 console=tty1 root=LABEL=writable rootfstype=ext4 panic=10 rootwait fixrtc
+```
+
+---
+
 ## 2026-03-05 20:00 - motya microSD исправлена (окончательно)
 
 **Проблема:** motya не загружалась, сервисы падали

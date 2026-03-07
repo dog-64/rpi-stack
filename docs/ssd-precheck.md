@@ -217,3 +217,7 @@ ansible sema -m shell -a "sudo hdparm -t /dev/sda2"
 ## После проверки
 
 Если всё OK → переходи к [миграции на SSD](ssd-migration-manual.md)
+
+**Дополнительно:**
+- [→ Filesystem Health Check](filesystem-health-check.md) — проверка состояния файловой системы после размонтирования
+- [→ Lessons Learned](lessons-learned.md) — ошибки и решения

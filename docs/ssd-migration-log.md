@@ -1,90 +1,123 @@
 # SSD Migration Log — motya (10.0.1.56)
 
-## Проблемы предыдущих попыток
+**Дата успешной миграции:** 2026-03-07
 
-1. **Не регенерировался initramfs** — initramfs не знает где новый корень, загрузка зависает
-2. **Таймауты zram, GPU, cups** — модули ядра не находятся из-за несовпадения путей
-3. **Ядро 6.17 и отсутствие ip_tables/nf_tables** — upstream баг, нужен пакет `linux-modules-extra-raspi`
-4. **Дублирование LABEL=writable** — обе метки совпадают, ядро монтирует не тот раздел
+## Правильная последовательность (проверено на Ubuntu 25.10)
 
-## Правильная последовательность
-
-1. Форматировать SSD, создать ext4 с меткой `writable`
-2. Смонтировать, скопировать rootfs через `rsync -axHAWX`
-3. Написать правильный fstab на SSD
-4. Регенерировать initramfs через chroot
-5. Установить `linux-modules-extra-raspi` на SSD
-6. Переименовать метку microSD в `writable-sd`
+1. Скопировать rootfs на SSD через `rsync -axHAWX`
+2. Написать правильный fstab на SSD с **PARTUUID**
+3. Проверить hostname, machine-id на SSD
+4. Обновить **ОБА** cmdline.txt файла на microSD с **PARTUUID** SSD
+5. Переименовать метку microSD в `writable-sd`
+6. Проверить весь чеклист перед перезагрузкой
 7. Перезагрузить
 
 ---
 
-## Исходное состояние
+## Исходное состояние (перед успешной миграцией)
 
-- Хост: motya (10.0.1.56), Raspberry Pi 4, 8GB
-- Root: `/dev/mmcblk0p2` (microSD, 57G, использовано 2.4G)
-- Ядро: `6.17.0-1003-raspi`
-- SSD: `/dev/sda` (119.2G), один раздел `sda1` (119.2G)
-- Метка microSD: `writable`
-- Метка SSD: `writable` (осталась от предыдущей неудачной миграции)
-- cmdline.txt: `cfg80211.ieee80211_regdom=RU` (без root= — значит используется LABEL из initramfs)
-- fstab: `LABEL=writable / ext4`, `LABEL=system-boot /boot/firmware vfat`
+- **Хост:** motya (10.0.1.56), Raspberry Pi 4, 8GB
+- **ОС:** Ubuntu 25.10
+- **Root:** `/dev/mmcblk0p2` (microSD)
+- **SSD:** `/dev/sda` (119.2G), два раздела `sda1` (boot), `sda2` (root)
+- **SSD PARTUUID:** `cc15fd91-e0ce-4651-bcd1-d018d708bea8`
+- **Скорость SSD:** 34 MB/sec (USB 2.0, ограничение Raspberry Pi 4)
 
 ---
 
-## Выполнение
+## Успешная миграция
 
-### Шаг 1: Форматирование SSD
-- **Команда:** `sudo mkfs.ext4 -F -L writable /dev/sda1`
-- **Результат:** FORMAT OK, UUID: 205ccd49-42e2-4fb8-9848-7208594f4c6f, метка: writable
-- **Хост доступен:** ДА
+### Шаг 1: Копирование rootfs на SSD
+```bash
+sudo mkdir -p /mnt/ssd && sudo mount /dev/sda2 /mnt/ssd
+sudo rsync -axHAWX --info=progress2 / /mnt/ssd/ \
+  --exclude='/mnt/**' --exclude='/tmp/**' --exclude='/proc/**' \
+  --exclude='/sys/**' --exclude='/dev/**' --exclude='/run/**'
+```
 
-### Шаг 2: Монтирование SSD и копирование rootfs
-- **Команды:**
-  - `sudo mkdir -p /mnt/ssd && sudo mount /dev/sda1 /mnt/ssd`
-  - `sudo rsync -axHAWX --info=progress2 / /mnt/ssd/ --exclude='/mnt/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/dev/*' --exclude='/run/*' --exclude='/tmp/*' --exclude='/boot/firmware/*'`
-- **Результат:** RSYNC OK. SSD: 2.5G использовано из 117G
-- **Хост доступен:** ДА
+### Шаг 2: fstab на SSD с PARTUUID
+```bash
+cat << 'EOF' | sudo tee /mnt/ssd/etc/fstab
+# /etc/fstab: static file system information.
+# Ubuntu uses PARTUUID for deterministic mounting (not LABEL)
+PARTUUID=cc15fd91-e0ce-4651-bcd1-d018d708bea8	/	ext4	defaults,noatime	0	1
+PARTUUID=6d3d7424-01	/boot/firmware	vfat	defaults	0	2
+EOF
+```
 
-### Шаг 3: Записать fstab на SSD
-- **Команда:** `echo '...' | sudo tee /mnt/ssd/etc/fstab`
-- **Результат:** fstab записан, проверен — 2 строки, без дубликатов
-- **Хост доступен:** ДА
+### Шаг 3: Проверка identity на SSD
+```bash
+cat /mnt/ssd/etc/hostname      # Должно быть motya
+cat /mnt/ssd/etc/machine-id    # Должен быть НЕ пустой
+```
 
-### Шаг 4: Регенерировать initramfs через chroot
-- **Команды:**
-  - `sudo mount --bind /dev /mnt/ssd/dev`
-  - `sudo mount --bind /proc /mnt/ssd/proc`
-  - `sudo mount --bind /sys /mnt/ssd/sys`
-  - `sudo mount --bind /boot/firmware /mnt/ssd/boot/firmware`
-  - `sudo chroot /mnt/ssd update-initramfs -u -k all`
-- **Результат:** `update-initramfs: Generating /boot/initrd.img-6.17.0-1003-raspi` — INITRAMFS OK
-- **Хост доступен:** ДА
+### Шаг 4: cmdline.txt на microSD с PARTUUID SSD
+```bash
+# ОБА файла должны быть обновлены (Ubuntu tryback)
+cat << 'EOF' | sudo tee /boot/firmware/cmdline.txt
+cfg80211.ieee80211_regdom=RU console=serial0,115200 console=tty1 root=PARTUUID=cc15fd91-e0ce-4651-bcd1-d018d708bea8 rootfstype=ext4 fsck.repair=yes rootwait quiet plymouth.ignore-serial-consoles
+EOF
 
-### Шаг 5: Проверка linux-modules-extra-raspi
-- **Команда:** `find /lib/modules/6.17.0-1003-raspi -name 'br_netfilter*' -o -name 'ip_tables*' -o -name 'nf_tables*'`
-- **Результат:** Модули br_netfilter.ko.zst, ip_tables.ko.zst, nf_tables.ko.zst ЕСТЬ в ядре 6.17.0-1003-raspi. Пакет linux-modules-extra-raspi не существует для Ubuntu 25.10, но модули включены в базовый пакет. На SSD они тоже скопированы.
-- **Хост доступен:** ДА
+cat << 'EOF' | sudo tee /boot/firmware/current/cmdline.txt
+cfg80211.ieee80211_regdom=RU console=serial0,115200 console=tty1 root=PARTUUID=cc15fd91-e0ce-4651-bcd1-d018d708bea8 rootfstype=ext4 fsck.repair=yes rootwait quiet plymouth.ignore-serial-consoles
+EOF
+```
 
-### Шаг 6: Размонтировать и переименовать метку microSD
-- **Команды:**
-  - `sudo umount /mnt/ssd/{boot/firmware,sys,proc,dev}` + `sudo umount /mnt/ssd`
-  - `sudo e2label /dev/mmcblk0p2 writable-sd`
-- **Результат:** UNMOUNT OK. microSD label: `writable-sd`, SSD label: `writable`
-- **Хост доступен:** ДА
+### Шаг 5: Изменить LABEL на microSD
+```bash
+sudo tune2fs -L writable-sd /dev/mmcblk0p2
+```
 
-### Шаг 7: Перезагрузка и проверка
-- **Команда:** `sudo sync && sudo reboot now`
-- **Результат:**
-  - Root: `/dev/sda1` (SSD, 117G) — **МИГРАЦИЯ УСПЕШНА**
-  - Ядро: `6.17.0-1003-raspi`
-  - graphical.target: 45.6 сек
-  - Полная загрузка: 5 мин 9 сек (из них ~4 мин — apt-daily.service, не критично)
-  - `modprobe br_netfilter` — OK
-  - `modprobe ip_tables` — OK
-- **Хост доступен:** ДА
+### Шаг 6: Чеклист перед перезагрузкой
+```bash
+# Все три PARTUUID должны совпадать:
+grep -o 'root=PARTUUID=[^ ]*' /boot/firmware/cmdline.txt
+sudo blkid -s PARTUUID -o value /dev/sda2
+grep 'PARTUUID.*\/' /mnt/ssd/etc/fstab
 
-## Итог
+# LABEL должны отличаться:
+sudo blkid -s LABEL -o value /dev/mmcblk0p2  # writable-sd
+sudo blkid -s LABEL -o value /dev/sda2        # writable
+```
 
-Миграция rootfs на SSD выполнена успешно. Ключевое отличие от предыдущих неудачных попыток — **регенерация initramfs через chroot** (шаг 4), которая ранее пропускалась.
+### Шаг 7: Перезагрузка
+```bash
+sudo umount /mnt/ssd
+sudo reboot
+```
 
+---
+
+## Результат успешной миграции
+
+| Параметр | Значение |
+|----------|----------|
+| Root устройство | `/dev/sda2` (SSD) ✅ |
+| Boot устройство | `/dev/mmcblk0p1` (microSD) ✅ |
+| microSD LABEL | `writable-sd` ✅ |
+| SSD LABEL | `writable` ✅ |
+| fstab | `PARTUUID=cc15fd91-e0ce-4651-bcd1-d018d708bea8` ✅ |
+| cmdline.txt | `root=PARTUUID=cc15fd91-e0ce-4651-bcd1-d018d708bea8` ✅ |
+| hostname | `motya` ✅ |
+| machine-id | `2bf129d7ad98480da64455a731feadd2` ✅ |
+| I/O ошибки | Нет ✅ |
+| Скорость SSD | 34 MB/sec (USB 2.0) |
+
+---
+
+## Критичные отличия от предыдущих неудач
+
+1. **Использование PARTUUID вместо LABEL** — детерминированное поведение
+2. **Изменение LABEL на microSD на writable-sd** — избегаем конфликта
+3. **Обновление ОБОИХ cmdline.txt файлов** — Ubuntu tryback механизм
+4. **Проверка hostname/machine-id** — нет конфликтов с другими хостами
+5. **Чеклист ПЕРЕД перезагрузкой** — все файлы проверены одновременно
+
+---
+
+## Примечания
+
+- **Ubuntu на Raspberry Pi использует ДВА cmdline.txt файла:** основной и current/
+- **Boot partition остаётся на microSD** — только rootfs на SSD
+- **PARTUUID формата XXXXXXXX-YY** для MBR (8 символов + номер раздела)
+- **USB 2.0 ограничение:** 34 MB/sec — нормально для Raspberry Pi 4

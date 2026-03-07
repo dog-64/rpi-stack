@@ -244,3 +244,394 @@ root=PARTUUID=<SSD_PARTUUID> rootfstype=ext4 rootwait ...
 ```
 
 ---
+
+## 2026-03-05: fix-sd-network.sh не исправил cmdline.txt
+
+### Контекст:
+- **Действия:** Свежий образ Ubuntu записан через Raspberry Pi Imager
+- **Скрипт:** fix-sd-network.sh запущен для настройки сети
+- **Результат:** cmdline.txt всё равно содержал только `cfg80211.ieee80211_regdom=RU`
+- **Проблема:** Система не загрузилась (нет root=)
+
+### Диагностика:
+Скрипт обнаружил что cmdline.txt не содержит root=, предложил исправить.
+Пользователь выбрал "y" для авто-исправления.
+
+**НО:** Скрипт брал `CURRENT_CMDLINE` из `current/cmdline.txt` как источник "правильной" строки.
+Если `current/cmdline.txt` **тоже** повреждён (только `cfg80211`), то и "исправленная" версия неправильная!
+
+### Решение:
+**Исправлен скрипт fix-sd-network.sh:**
+1. Добавлена проверка: если `current/cmdline.txt` не содержит `root=`, используется стандартная строка
+2. Добавлена верификация после записи (проверка что файл действительно записан)
+
+### Стандартная cmdline для Ubuntu Raspberry Pi:
+```bash
+console=serial0,115200 multipath=off dwc_otg.lpm_enable=0 console=tty1 root=LABEL=writable rootfstype=ext4 panic=10 rootwait fixrtc
+```
+
+### Правило на будущее:
+```
+ПРИ ИСПОЛЬЗОВАНИИ fix-sd-network.sh ВСЕГДА проверять:
+
+После выбора "y" для авто-исправления:
+1. Скрипт ДОЛЖЕН вывести "cmdline.txt ИСПРАВЛЕН и ПРОВЕРЕН"
+2. Если выводится "ОШИБКА: Запись не удалась" — карта неисправна
+3. После извлечения карты: перемонтировать и проверить cmdline.txt содержит root=
+```
+
+### Как проверить fix-sd-network.sh отработал правильно:
+```bash
+# После работы скрипта:
+cat /Volumes/boot/cmdline.txt | grep root=
+# Должен вывести: root=LABEL=writable или root=PARTUUID=...
+
+# Если grep ничего не вывел — cmdline.txt повреждён!
+```
+
+---
+
+## 2026-03-06: motya microSD — "Input/output error" но карта исправна
+
+### Контекст:
+- **Проблема:** При попытке прочитать `/tmp/motya_sd/etc/machine-id` — `Input/output error`
+- **Предварительный диагноз:** Карта умерла (физические дефекты)
+- **Проверка:** `dd if=/dev/rdisk11 of=/dev/null` — 63GB прочитано без ошибок!
+
+### Диагностика:
+Карта физически исправна. Проблема была в **неправильном размонтировании**:
+- Файловая система осталась в "грязном" состоянии
+- При попытке монтирования ядро выдавало I/O error как защитную меру
+- После проверки через `dd` (который перемонтировал карту) — всё работает
+
+### Как проверить состояние файловой системы:
+```bash
+# Проверить флаг "clean" в ext4 superblock:
+sudo tune2fs -l /dev/sdX2 | grep "Filesystem state"
+# clean         ✅ Всё OK
+# not clean     ⚠️ Было неправильное размонтирование
+
+# Полная проверка:
+sudo fsck -n /dev/sdX2  # только проверка, не исправлять
+```
+
+### Правило на будущее:
+```
+ПЕРЕД извлечением microSD:
+1. sync                      # Сбросить кэш на диск
+2. sudo systemctl poweroff   # Правильное выключение
+3. НЕ извлекать пока мигает LED активности
+
+ПРИ I/O errors на карте:
+1. Проверить состояние ФС: tune2fs -l | grep "Filesystem state"
+2. Если "not clean" → sudo fsck -y /dev/sdX
+3. Если есть bad blocks → карта под замену
+```
+
+### Документация:
+Подробнее: [→ Filesystem Health Check](filesystem-health-check.md)
+
+---
+
+## 2026-03-06: motya НЕ загрузился после миграции — playbook пропустил Ubuntu
+
+### Контекст:
+- **Хост:** motya (Raspberry Pi 4, Ubuntu)
+- **Действия:** Запущен `ssd-migrate.yml` для миграции на SSD
+- **Результат:** После перезагрузки — Connection refused
+
+### Диагностика:
+**Playbook `update_cmdline.yml` пропустил обновление для Ubuntu:**
+```yaml
+# Строка 8-14 — ОШИБКА!
+- name: Skip cmdline update for Ubuntu (uses LABEL auto-detection)
+  msg: "Ubuntu использует LABEL auto-detection. Изменение не требуется."
+```
+
+**Почему это НЕПРАВДА:**
+1. Ubuntu на Raspberry Pi использует **initramfs** для монтирования rootfs
+2. initramfs ищет `root=` параметр в cmdline.txt
+3. Если `root=` не указан → initramfs использует первый найденный LABEL=writable
+4. **microSD имеет LABEL=writable, SSD тоже имеет LABEL=writable**
+5. initramfs находит **microSD первым** → загрузка с microSD!
+
+### Дополнительные проблемы:
+1. **PARTUUID mismatch:**
+   - cmdline.txt содержал старый PARTUUID (до форматирования SSD)
+   - SSD был переформатирован → PARTUUID изменился
+   - Playbook не получал актуальный PARTUUID!
+
+2. **LABEL конфликт:**
+   - microSD: LABEL=writable
+   - SSD: LABEL=writable
+   - initramfs выбрал microSD
+
+### Решение:
+**1. Исправлен playbook `update_cmdline.yml`:**
+- Удалён пропуск Ubuntu — ВСЕГДА обновляем cmdline.txt
+- Получаем PARTUUID SSD динамически через `blkid`
+- Изменяем LABEL на microSD на `writable-sd`
+- Обновляем ОБА cmdline.txt файла (Ubuntu tryboot)
+- Добавлены CRITICAL assert проверки
+
+**2. Добавлена проверка в `verify.yml`:**
+- Проверка cmdline.txt содержит root=PARTUUID=SSD
+- Проверка current/cmdline.txt содержит root=PARTUUID=SSD
+
+### Правило на будущее:
+```
+ПРИ ИСПРАВЛЕНИИ PLAYBOOK'А — НЕ ПРОПУСКАТЬ критические шаги!
+
+Никаких "Ubuntu auto-detection" — ВСЕГДА явная конфигурация:
+
+1. Получить PARTUUID SSD (blkid)
+2. Проверить что cmdline.txt содержит root=PARTUUID=SSD
+3. Проверить что current/cmdline.txt содержит root=PARTUUID=SSD
+4. Изменить LABEL на microSD на writable-sd
+5. НЕ перезагружаться пока verify не пройден!
+```
+
+### Почему нужно всегда проверять:
+- Playbook может завершиться с "ok=2 changed=0" но ничего не сделать!
+- Assert проверки ОСТАНАВЛИВАЮТ выполнение если что-то не так
+- Без проверки → перезагрузка → система не грузится
+
+---
+
+## 2026-03-06: motya НЕ загрузился — поэтапная проверка файлов
+
+### Контекст:
+- **Проблема:** После исправления cmdline.txt → перезагрузка → виснет на fsck
+- **Исправление:** Исправил fstab на microSD → снова проверяю cmdline.txt
+- **Результат:** Пользователь спросил: "ты проверил ВСЕ файлы или будем перегружаться бесконечно?"
+
+### Диагностика:
+**Я проверял файлы ПО ОДНОМУ за раз:**
+1. Шаг 1: Исправил cmdline.txt → забыл про fstab
+2. Шаг 2: Исправил fstab → не проверил cmdline.txt ещё раз
+3. Шаг 3: Проверял снова, но уже не был уверен что всё исправлено
+
+**Проблема в подходе:**
+- Файлы взаимосвязаны — изменение одного влияет на другие
+- Проверка по одному файлу = бесконечный цикл "поправил → перезагрузил → FAIL"
+- Каждая перезагрузка = 5+ минут потерянного времени
+
+### Какие файлы взаимосвязаны при SSD миграции:
+
+| Файл | Если неправильно | Последствие |
+|------|------------------|-------------|
+| cmdline.txt | `root=LABEL=writable` | Загрузится с microSD |
+| current/cmdline.txt | Не обновлён | Tryboot откатит изменения |
+| fstab (microSD) | `LABEL=writable /` | Systemd ждёт SSD |
+| fstab (SSD) | Неправильный PARTUUID | Rootfs не смонтируется |
+| LABEL (microSD) | `writable` | Конфликт с SSD |
+| LABEL (SSD) | Не `writable` | Initramfs не найдёт |
+| PARTUUID | Не совпадает | Загрузится со старого диска |
+
+### Решение:
+**Добавлена проверка ВСЕХ файлов ОДНОВРЕМЕННО:**
+
+```bash
+# Единая команда проверки всех 7 файлов:
+echo "=== 1. cmdline.txt ===" && cat /boot/firmware/cmdline.txt && \
+echo "" && echo "=== 2. current/cmdline.txt ===" && cat /boot/firmware/current/cmdline.txt && \
+echo "" && echo "=== 3. fstab (microSD) ===" && cat /etc/fstab && \
+echo "" && echo "=== 4. fstab (SSD) ===" && cat /mnt/ssd/etc/fstab && \
+echo "" && echo "=== 5. LABELS ===" && blkid | grep LABEL && \
+echo "" && echo "=== 6. PARTUUID match ===" && \
+echo "cmdline: $(grep -o 'root=PARTUUID=[^ ]*' /boot/firmware/cmdline.txt)" && \
+echo "SSD:     $(blkid /dev/sda2 | grep -o 'PARTUUID=\"[^\"]*\"')"
+```
+
+### Правило на будущее:
+```
+ПРИ ИЗМЕНЕНИИ КОНФИГУРАЦИИ ЗАГРУЗКИ:
+
+❌ НЕПРАВИЛЬНЫЙ ПОДХОД (поэтапный):
+1. Исправить cmdline.txt
+2. Перезагрузиться
+3. FAIL
+4. Исправить fstab
+5. Перезагрузиться
+6. FAIL
+7. Исправить LABEL
+8. ... (бесконечно)
+
+✅ ПРАВИЛЬНЫЙ ПОДХОД (согласованный):
+1. ПРОВЕРИТЬ ВСЕ 7 файлов одновременно
+2. Исправить ВСЕ файлы одновременно
+3. ПРОВЕРИТЬ ВСЕ 7 файлов одновременно
+4. ТОЛЬКО ПОТОМ перезагрузка
+
+5+ минут на каждую перезагрузку × 5 раз = 25+ минут потерянного времени!
+```
+
+### Документация:
+- [→ Filesystem Health Check](filesystem-health-check.md) — раздел "СОГЛАСОВАННОЕ изменение"
+- [→ SSD Migration Checklist](ssd-migration-checklist.md) — единая команда проверки
+
+---
+
+## 2026-03-06: motya бесконечная перезагрузка — console=serial0, panic=10, hostname
+
+### Контекст:
+- **Проблема:** После исправления cmdline.txt, fstab, LABEL — motya бесконечно перезагружается
+- **Сообщение:** "Порт UART не найден" перед каждой перезагрузкой
+- **Причина:** Несколько НЕОЧЕВИДНЫХ проблем вызывающих перезагрузку
+
+### Диагностика:
+
+**1. console=serial0,115200**
+- Raspberry Pi 5 может не иметь подключённого UART
+- Systemd ждёт ответа на serial console → timeout → перезагрузка
+- Сообщение "Порт UART не найден" (на русском из-за локализации)
+
+**2. panic=10**
+- При любой kernel panic → перезагрузка через 10 секунд
+- Нельзя увидеть сообщение об ошибке!
+- Бесконечный цикл: ошибка → panic → перезагрузка → ошибка ...
+
+**3. hostname=sema на motya**
+- SSD был скопирован с sema
+- hostname=sema создаёт сетевой конфликт
+- k3s сервис пытается запуститься с чужим конфигом → крах → перезагрузка
+
+**4. k3s сервисы от sema**
+- `/etc/rancher/k3s/k3s.yaml` настроен для sema
+- `k3s.service` запускается → неправильный конфиг → крах → перезагрузка
+
+### Решение:
+
+**1. Убрать console=serial0:**
+```bash
+# БЫЛО:
+console=serial0,115200 console=tty1 ...
+# СТАЛО:
+console=tty1 ...
+```
+
+**2. Изменить panic на -1 (для отладки):**
+```bash
+# БЫЛО:
+panic=10  # Перезагрузка через 10 сек
+# СТАЛО:
+panic=-1  # Остановиться при ошибке (показать diagnostic)
+```
+
+**3. Исправить hostname и machine-id:**
+```bash
+echo "motya" > /mnt/ssd/etc/hostname
+uuidgen | tr -d '-' > /mnt/ssd/etc/machine-id
+```
+
+**4. Удалить k3s от другого хоста:**
+```bash
+rm -rf /mnt/ssd/etc/rancher/k3s/*
+rm -f /mnt/ssd/etc/systemd/system/k3s.service
+rm -f /mnt/ssd/etc/systemd/system/multi-user.target.wants/k3s.service
+```
+
+### Правило на будущее:
+
+```
+ПРИ ПЕРЕВОЙ ЗАГРУЗКЕ ПОСЛЕ МИГРАЦИИ — проверить параметры ПЕРЕЗАГРУЗКИ:
+
+1. ❌ НЕ console=serial0     → использовать console=tty1
+2. ❌ НЕ panic=10           → использовать panic=-1 для отладки
+3. ❌ НЕ чужой hostname     → проверить /etc/hostname
+4. ❌ НЕ чужой machine-id   → проверить /etc/machine-id
+5. ❌ НЕ чужие сервисы     → проверить k3s, docker
+```
+
+### Почему эти проблемы НЕ были найдены раньше:
+
+Они не связаны с миграцией SSD напрямую:
+- `console=serial0` — стандартный параметр в Raspberry Pi OS
+- `panic=10` — "безопасное" значение для production
+- hostname/machine-id/k3s — проблема копирования SSD
+
+Но при миграции на **другой** хост они становятся критичными!
+
+### Единая команда проверки:
+
+```bash
+# Выполнить ПЕРЕД первой загрузкой:
+echo "Console: $(grep -o 'console=[^ ]*' /boot/firmware/cmdline.txt)" && \
+echo "Panic: $(grep -o 'panic=[^ ]*' /boot/firmware/cmdline.txt || echo 'no panic')" && \
+echo "Hostname: $(cat /mnt/ssd/etc/hostname)" && \
+echo "Machine-id: $(cat /mnt/ssd/etc/machine-id)" && \
+echo "k3s files: $(find /mnt/ssd/etc/systemd -name '*k3s*' 2>/dev/null | wc -l)"
+```
+
+### Документация:
+- [→ Filesystem Health Check](filesystem-health-check.md) — раздел "Проверки параметров ПЕРЕЗАГРУЗКИ"
+- [→ SSD Migration Checklist](ssd-migration-checklist.md) — проверки #7-9
+
+---
+
+## 2026-03-06: motya бесконечная перезагрузка — ДВОЙНАЯ КОНФИГУРАЦИЯ
+
+### Контекст:
+- **Проблема:** После исправления ВСЕХ параметров на microSD — motya всё равно бесконечно перезагружается
+- **Исправлено:** console=serial0 убран, panic=-1, hostname=motya, k3s удалён
+- **Результат:** По-прежнему перезагрузка
+
+### Диагностика:
+
+**Что было проверено на microSD:**
+```
+✅ cmdline.txt: console=tty1, panic=-1, root=PARTUUID=SSD
+✅ fstab: правильный
+✅ LABELS: правильные
+✅ hostname: motya
+```
+
+**Что было пропущено:**
+```
+❌ cmdline.txt на SSD — НЕ ПРОВЕРЕН!
+```
+
+**Когда проверил SSD cmdline.txt:**
+```
+❌ console=serial0,115200
+❌ root=LABEL=writable (старый!)
+```
+
+### Корневая причина:
+
+**Ubuntu на Raspberry Pi имеет boot разделы на ОБАИХ носителях!**
+
+| Файл | microSD | SSD | Обновлён? |
+|------|---------|-----|-----------|
+| `/boot/firmware/cmdline.txt` | ✅ Исправлен | ❌ СТАРЫЙ | Только microSD! |
+| `/boot/firmware/current/cmdline.txt` | ✅ Исправлен | ❌ СТАРЫЙ | Только microSD! |
+
+### Почему это происходит:
+
+1. **microSD cmdline.txt** — используется firmware при загрузке
+2. **SSD cmdline.txt** — используется системой ПОСЛЕ загрузки
+3. Если различаются → путаница, перезагрузка!
+
+### Решение:
+
+**Обновлять cmdline.txt на ОБАИХ носителях:**
+```bash
+# Проверка идентичности:
+diff /boot/firmware/cmdline.txt /mnt/ssd/boot/firmware/cmdline.txt
+# Должен быть пустой вывод = файлы идентичны
+```
+
+### Правило на будущее:
+
+```
+КАЖДЫЙ конфигурационный файл существует на ОБАИХ носителях!
+
+❌ НЕПРАВИЛЬНО: Исправить на microSD → перезагрузка
+✅ ПРАВИЛЬНО:    Исправить на microSD И SSD → проверить оба → перезагрузка
+```
+
+### Документация:
+- [→ Filesystem Health Check](filesystem-health-check.md) — раздел "ДВОЙНАЯ КОНФИГУРАЦИЯ"
+- [→ SSD Migration Checklist](ssd-migration-checklist.md) — раздел "ДВОЙНАЯ КОНФИГУРАЦИЯ"
+
+---

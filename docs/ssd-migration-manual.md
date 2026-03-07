@@ -22,6 +22,7 @@
 > Проверь SSD, адаптер и кабель:
 > - [→ Lessons Learned (ошибки)](lessons-learned.md)
 > - [→ SSD Pre-check Guide](ssd-precheck.md)
+> - [→ Filesystem Health Check](filesystem-health-check.md) — проверка состояния ФС
 > - [→ USB Adapters Tested](usb-adapters-tested.md)
 >
 > **Краткая проверка:**
@@ -35,6 +36,9 @@
 > ```
 
 **Основная документация по проверке:** [→ SSD Pre-check Guide](ssd-precheck.md)
+
+> **КРИТИЧЕСКИ ВАЖНО:** После миграции, ПЕРЕД перезагрузкой — пройди по [→ SSD Migration Checklist](ssd-migration-checklist.md)
+> Это предотвратит проблемы с загрузкой!
 
 Ниже приведена краткая справочная информация для быстрой проверки.
 
