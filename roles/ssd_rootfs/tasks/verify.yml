@@ -202,12 +202,46 @@
   tags:
     - verify
 
-- name: Check cmdline.txt exists (Raspberry Pi OS)
+- name: Check cmdline.txt exists (Ubuntu uses /boot/firmware)
   ansible.builtin.stat:
-    path: "/boot/cmdline.txt"
+    path: "{{ '/boot/firmware/cmdline.txt' if ssd_target_os == 'ubuntu' else '/boot/cmdline.txt' }}"
   register: cmdline_stat_verify
+  tags:
+    - verify
+
+- name: CRITICAL - Verify cmdline.txt contains SSD PARTUUID (Ubuntu)
+  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}' /boot/firmware/cmdline.txt"
+  changed_when: false
+  register: cmdline_verify
+  failed_when: cmdline_verify.rc != 0
   when:
-    - ssd_target_os != 'ubuntu'
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: CRITICAL - Verify current/cmdline.txt contains SSD PARTUUID (Ubuntu tryboot)
+  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}' /boot/firmware/current/cmdline.txt"
+  changed_when: false
+  register: cmdline_current_verify
+  failed_when: cmdline_current_verify.rc != 0
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Display cmdline.txt verification result (Ubuntu)
+  ansible.builtin.debug:
+    msg:
+      - "cmdline.txt: {{ cmdline_verify.stdout_lines }}"
+      - "current/cmdline.txt: {{ cmdline_current_verify.stdout_lines }}"
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
   tags:
     - verify
 
