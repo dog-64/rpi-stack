@@ -420,27 +420,29 @@ sudo fsck -n /dev/sdX2  # только проверка, не исправлят
 
 | Файл | Если неправильно | Последствие |
 |------|------------------|-------------|
-| cmdline.txt | `root=LABEL=writable` | Загрузится с microSD |
-| current/cmdline.txt | Не обновлён | Tryboot откатит изменения |
-| fstab (microSD) | `LABEL=writable /` | Systemd ждёт SSD |
+| cmdline.txt (microSD) | `root=LABEL=writable` | Загрузится с microSD |
+| current/cmdline.txt (microSD) | Не обновлён | Tryboot откатит изменения |
 | fstab (SSD) | Неправильный PARTUUID | Rootfs не смонтируется |
 | LABEL (microSD) | `writable` | Конфликт с SSD |
 | LABEL (SSD) | Не `writable` | Initramfs не найдёт |
 | PARTUUID | Не совпадает | Загрузится со старого диска |
+| hostname (SSD) | Чужой hostname | Сетевой конфликт |
+| machine-id (SSD) | Пустой/чужой | Systemd не работает |
 
 ### Решение:
 **Добавлена проверка ВСЕХ файлов ОДНОВРЕМЕННО:**
 
 ```bash
-# Единая команда проверки всех 7 файлов:
+# Единая команда проверки всех критичных файлов:
 echo "=== 1. cmdline.txt ===" && cat /boot/firmware/cmdline.txt && \
 echo "" && echo "=== 2. current/cmdline.txt ===" && cat /boot/firmware/current/cmdline.txt && \
-echo "" && echo "=== 3. fstab (microSD) ===" && cat /etc/fstab && \
-echo "" && echo "=== 4. fstab (SSD) ===" && cat /mnt/ssd/etc/fstab && \
-echo "" && echo "=== 5. LABELS ===" && blkid | grep LABEL && \
-echo "" && echo "=== 6. PARTUUID match ===" && \
+echo "" && echo "=== 3. fstab (SSD) ===" && cat /mnt/ssd/etc/fstab && \
+echo "" && echo "=== 4. LABELS ===" && blkid | grep -E '(mmcblk0p2|sda2)' && \
+echo "" && echo "=== 5. PARTUUID match ===" && \
 echo "cmdline: $(grep -o 'root=PARTUUID=[^ ]*' /boot/firmware/cmdline.txt)" && \
-echo "SSD:     $(blkid /dev/sda2 | grep -o 'PARTUUID=\"[^\"]*\"')"
+echo "SSD:     $(sudo blkid -s PARTUUID -o value /dev/sda2)" && \
+echo "" && echo "=== 6. hostname ===" && cat /mnt/ssd/etc/hostname && \
+echo "" && echo "=== 7. machine-id ===" && cat /mnt/ssd/etc/machine-id
 ```
 
 ### Правило на будущее:
@@ -472,59 +474,53 @@ echo "SSD:     $(blkid /dev/sda2 | grep -o 'PARTUUID=\"[^\"]*\"')"
 
 ---
 
-## 2026-03-06: motya бесконечная перезагрузка — console=serial0, panic=10, hostname
+## 2026-03-06: motya бесконечная перезагрузка — panic=10, hostname, k3s
 
 ### Контекст:
 - **Проблема:** После исправления cmdline.txt, fstab, LABEL — motya бесконечно перезагружается
-- **Сообщение:** "Порт UART не найден" перед каждой перезагрузкой
 - **Причина:** Несколько НЕОЧЕВИДНЫХ проблем вызывающих перезагрузку
 
 ### Диагностика:
 
-**1. console=serial0,115200**
-- Raspberry Pi 5 может не иметь подключённого UART
-- Systemd ждёт ответа на serial console → timeout → перезагрузка
-- Сообщение "Порт UART не найден" (на русском из-за локализации)
-
-**2. panic=10**
+**1. panic=10**
 - При любой kernel panic → перезагрузка через 10 секунд
 - Нельзя увидеть сообщение об ошибке!
 - Бесконечный цикл: ошибка → panic → перезагрузка → ошибка ...
 
-**3. hostname=sema на motya**
+**2. hostname=sema на motya**
 - SSD был скопирован с sema
 - hostname=sema создаёт сетевой конфликт
 - k3s сервис пытается запуститься с чужим конфигом → крах → перезагрузка
 
-**4. k3s сервисы от sema**
+**3. k3s сервисы от sema**
 - `/etc/rancher/k3s/k3s.yaml` настроен для sema
 - `k3s.service` запускается → неправильный конфиг → крах → перезагрузка
 
+### ПРИМЕЧАНИЕ: console=serial0
+
+**console=serial0,115200 НЕ является проблемой** на Raspberry Pi 4:
+- motya (RPi 4) работает с console=serial0,115200 ✅
+- osya (RPi 4) работает с console=serial0,115200 ✅
+- Стандартная Ubuntu конфигурация включает оба консольных вывода
+
 ### Решение:
 
-**1. Убрать console=serial0:**
-```bash
-# БЫЛО:
-console=serial0,115200 console=tty1 ...
-# СТАЛО:
-console=tty1 ...
-```
-
-**2. Изменить panic на -1 (для отладки):**
+**1. Изменить panic на -1 (для отладки):**
 ```bash
 # БЫЛО:
 panic=10  # Перезагрузка через 10 сек
 # СТАЛО:
 panic=-1  # Остановиться при ошибке (показать diagnostic)
+# ИЛИ убрать panic параметр вообще
 ```
 
-**3. Исправить hostname и machine-id:**
+**2. Исправить hostname и machine-id:**
 ```bash
 echo "motya" > /mnt/ssd/etc/hostname
 uuidgen | tr -d '-' > /mnt/ssd/etc/machine-id
 ```
 
-**4. Удалить k3s от другого хоста:**
+**3. Удалить k3s от другого хоста:**
 ```bash
 rm -rf /mnt/ssd/etc/rancher/k3s/*
 rm -f /mnt/ssd/etc/systemd/system/k3s.service
@@ -536,19 +532,18 @@ rm -f /mnt/ssd/etc/systemd/system/multi-user.target.wants/k3s.service
 ```
 ПРИ ПЕРЕВОЙ ЗАГРУЗКЕ ПОСЛЕ МИГРАЦИИ — проверить параметры ПЕРЕЗАГРУЗКИ:
 
-1. ❌ НЕ console=serial0     → использовать console=tty1
-2. ❌ НЕ panic=10           → использовать panic=-1 для отладки
-3. ❌ НЕ чужой hostname     → проверить /etc/hostname
-4. ❌ НЕ чужой machine-id   → проверить /etc/machine-id
-5. ❌ НЕ чужие сервисы     → проверить k3s, docker
+1. ❌ НЕ panic=10           → использовать panic=-1 или убрать для отладки
+2. ❌ НЕ чужой hostname     → проверить /etc/hostname
+3. ❌ НЕ чужой machine-id   → проверить /etc/machine-id
+4. ❌ НЕ чужие сервисы     → проверить k3s, docker
+5. ✅ console=serial0      → работает нормально, НЕ трогать
 ```
 
 ### Почему эти проблемы НЕ были найдены раньше:
 
 Они не связаны с миграцией SSD напрямую:
-- `console=serial0` — стандартный параметр в Raspberry Pi OS
 - `panic=10` — "безопасное" значение для production
-- hostname/machine-id/k3s — проблема копирования SSD
+- hostname/machine-id/k3s — проблема копирования SSD с другого хоста
 
 Но при миграции на **другой** хост они становятся критичными!
 
@@ -556,8 +551,7 @@ rm -f /mnt/ssd/etc/systemd/system/multi-user.target.wants/k3s.service
 
 ```bash
 # Выполнить ПЕРЕД первой загрузкой:
-echo "Console: $(grep -o 'console=[^ ]*' /boot/firmware/cmdline.txt)" && \
-echo "Panic: $(grep -o 'panic=[^ ]*' /boot/firmware/cmdline.txt || echo 'no panic')" && \
+echo "Panic: $(grep -o 'panic=[^ ]*' /boot/firmware/cmdline.txt || echo 'no panic - OK')" && \
 echo "Hostname: $(cat /mnt/ssd/etc/hostname)" && \
 echo "Machine-id: $(cat /mnt/ssd/etc/machine-id)" && \
 echo "k3s files: $(find /mnt/ssd/etc/systemd -name '*k3s*' 2>/dev/null | wc -l)"
@@ -569,69 +563,48 @@ echo "k3s files: $(find /mnt/ssd/etc/systemd -name '*k3s*' 2>/dev/null | wc -l)"
 
 ---
 
-## 2026-03-06: motya бесконечная перезагрузка — ДВОЙНАЯ КОНФИГУРАЦИЯ
+## 2026-03-06: motya бесконечная перезагрузка — ДВОЙНАЯ КОНФИГУРАЦИЯ (УСТАРЕЛО)
 
-### Контекст:
-- **Проблема:** После исправления ВСЕХ параметров на microSD — motya всё равно бесконечно перезагружается
-- **Исправлено:** console=serial0 убран, panic=-1, hostname=motya, k3s удалён
-- **Результат:** По-прежнему перезагрузка
+### ПРИМЕЧАНИЕ: Этот раздел УСТАРЕЛ
 
-### Диагностика:
+**Первоначальная диагностика была НЕВЕРНОЙ.**
 
-**Что было проверено на microSD:**
-```
-✅ cmdline.txt: console=tty1, panic=-1, root=PARTUUID=SSD
-✅ fstab: правильный
-✅ LABELS: правильные
-✅ hostname: motya
-```
+**Что думалось:**
+- Boot раздел есть на ОБАИХ носителях (microSD и SSD)
+- cmdline.txt нужно обновлять на ОБАИХ носителях
 
-**Что было пропущено:**
-```
-❌ cmdline.txt на SSD — НЕ ПРОВЕРЕН!
-```
+**На самом деле (проверено на motya и osya):**
+- **Boot раздел ТОЛЬКО на microSD** (`/dev/mmcblk0p1` → `/boot/firmware`)
+- **cmdline.txt ТОЛЬКО на microSD**
+- На SSD НЕТ boot раздела и cmdline.txt
 
-**Когда проверил SSD cmdline.txt:**
-```
-❌ console=serial0,115200
-❌ root=LABEL=writable (старый!)
-```
+### Правильная архитектура Ubuntu на Raspberry Pi:
 
-### Корневая причина:
-
-**Ubuntu на Raspberry Pi имеет boot разделы на ОБАИХ носителях!**
-
-| Файл | microSD | SSD | Обновлён? |
-|------|---------|-----|-----------|
-| `/boot/firmware/cmdline.txt` | ✅ Исправлен | ❌ СТАРЫЙ | Только microSD! |
-| `/boot/firmware/current/cmdline.txt` | ✅ Исправлен | ❌ СТАРЫЙ | Только microSD! |
-
-### Почему это происходит:
-
-1. **microSD cmdline.txt** — используется firmware при загрузке
-2. **SSD cmdline.txt** — используется системой ПОСЛЕ загрузки
-3. Если различаются → путаница, перезагрузка!
-
-### Решение:
-
-**Обновлять cmdline.txt на ОБАИХ носителях:**
-```bash
-# Проверка идентичности:
-diff /boot/firmware/cmdline.txt /mnt/ssd/boot/firmware/cmdline.txt
-# Должен быть пустой вывод = файлы идентичны
-```
+| Раздел | microSD | SSD | Назначение |
+|--------|---------|-----|------------|
+| Boot partition | ✅ Есть | ❌ Нет | cmdline.txt, config.txt, ядро |
+| Rootfs | Есть (старый) | ✅ Основной | Файловая система |
 
 ### Правило на будущее:
 
 ```
-КАЖДЫЙ конфигурационный файл существует на ОБАИХ носителях!
+ПРИ МИГРАЦИИ НА SSD:
 
-❌ НЕПРАВИЛЬНО: Исправить на microSD → перезагрузка
-✅ ПРАВИЛЬНО:    Исправить на microSD И SSD → проверить оба → перезагрузка
+1. ✅ cmdline.txt обновляется ТОЛЬКО на microSD (boot раздел)
+2. ✅ fstab обновляется на SSD (rootfs)
+3. ✅ Boot partition ВСЕГДА остаётся на microSD
+4. ✅ Rootfs переносится на SSD
+
+❌ НЕ ИЩИТЕ cmdline.txt на SSD - его там нет!
 ```
 
-### Документация:
-- [→ Filesystem Health Check](filesystem-health-check.md) — раздел "ДВОЙНАЯ КОНФИГУРАЦИЯ"
-- [→ SSD Migration Checklist](ssd-migration-checklist.md) — раздел "ДВОЙНАЯ КОНФИГУРАЦИЯ"
+### Что на самом деле вызывало перезагрузку:
+
+Проблема была в **ДРУГИХ параметрах**:
+- panic=10 → перезагрузка при любой ошибке
+- hostname=sema → k3s конфликт
+- k3s от другого хоста → неправильный конфиг
+
+Смотри раздел "motya бесконечная перезагрузка — panic=10, hostname, k3s"
 
 ---

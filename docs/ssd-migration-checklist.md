@@ -12,18 +12,19 @@
 
 ## ⚠️ ПРАВИЛО СОГЛАСОВАННОЙ ПРОВЕРКИ
 
-**ВСЕ 7 файлов должны быть проверены ОДНОВРЕМЕННО:**
+**ВСЕ критичные файлы должны быть проверены ОДНОВРЕМЕННО:**
 
 ```bash
 # Единая команда проверки ВСЕХ конфигурационных файлов:
-echo "=== 1. cmdline.txt ===" && cat /boot/firmware/cmdline.txt && \
-echo "" && echo "=== 2. current/cmdline.txt ===" && cat /boot/firmware/current/cmdline.txt && \
-echo "" && echo "=== 3. fstab (microSD) ===" && cat /etc/fstab && \
-echo "" && echo "=== 4. fstab (SSD) ===" && cat /mnt/ssd/etc/fstab && \
-echo "" && echo "=== 5. LABELS ===" && blkid | grep -E '(mmcblk0p2|sda2).*LABEL' && \
-echo "" && echo "=== 6. PARTUUID match ===" && \
+echo "=== 1. cmdline.txt (microSD) ===" && cat /boot/firmware/cmdline.txt && \
+echo "" && echo "=== 2. current/cmdline.txt (microSD) ===" && cat /boot/firmware/current/cmdline.txt && \
+echo "" && echo "=== 3. fstab (SSD) ===" && cat /mnt/ssd/etc/fstab && \
+echo "" && echo "=== 4. LABELS ===" && sudo blkid | grep -E '(mmcblk0p2|sda2)' && \
+echo "" && echo "=== 5. PARTUUID match ===" && \
 echo "cmdline: $(grep -o 'root=PARTUUID=[^ ]*' /boot/firmware/cmdline.txt)" && \
-echo "SSD:     $(blkid /dev/sda2 | grep -o 'PARTUUID=\"[^\"]*\"')"
+echo "SSD:     $(sudo blkid -s PARTUUID -o value /dev/sda2)" && \
+echo "" && echo "=== 6. hostname (SSD) ===" && cat /mnt/ssd/etc/hostname && \
+echo "" && echo "=== 7. machine-id (SSD) ===" && cat /mnt/ssd/etc/machine-id
 ```
 
 **Если ХОТЯ БЫ ОДИН пункт неверный — НЕ ПЕРЕЗАГРУЖАТЬ!**
@@ -131,8 +132,8 @@ sudo update-initramfs -u
 ```bash
 # Проверка console параметра:
 grep -o 'console=[^ ]*' /boot/firmware/cmdline.txt
-# ✅ ОК: console=tty1
-# ❌ ПЛОХО: console=serial0,115200 (вызывает зависание если UART не отвечает!)
+# ✅ ОК: console=tty1 или console=serial0,115200 (оба работают)
+# ✅ Стандартная Ubuntu конфигурация включает ОБА консольных вывода
 
 # Проверка panic параметра:
 grep -o 'panic=[^ ]*' /boot/firmware/cmdline.txt
@@ -140,16 +141,18 @@ grep -o 'panic=[^ ]*' /boot/firmware/cmdline.txt
 # ❌ ПЛОХО: panic=10 (перезагрузка через 10 сек при любой ошибке!)
 ```
 
-❌ **Если `console=serial0`** → UART может не отвечать → зависание → перезагрузка
 ❌ **Если `panic=10`** → Не увидите сообщение об ошибке → бесконечная перезагрузка
 
 **Исправление:**
 ```bash
-# Убрать console=serial0, изменить panic:
-sed -i 's/console=serial0,[0-9]* //' /boot/firmware/cmdline.txt
-sed -i 's/panic=10 /panic=-1 /' /boot/firmware/cmdline.txt
+# Изменить panic на -1 или убрать:
+sed -i 's/panic=10/panic=-1/' /boot/firmware/cmdline.txt
+# Или убрать совсем:
+sed -i 's/panic=[^ ]* //' /boot/firmware/cmdline.txt
 # Скопировать в current/cmdline.txt тоже!
 ```
+
+**ПРИМЕЧАНИЕ:** console=serial0,115200 **НЕ является проблемой** на Raspberry Pi 4. Оба хоста (motya и osya) успешно работают с этим параметром.
 
 ---
 
@@ -203,12 +206,12 @@ rm -f /mnt/ssd/etc/systemd/system/k3s.service.env
 # Выполнить ПЕРЕД перезагрузкой - проверить всё сразу:
 echo "=== 1. cmdline.txt ===" && grep root= /boot/firmware/cmdline.txt && \
 echo "" && echo "=== 2. current/cmdline.txt ===" && grep root= /boot/firmware/current/cmdline.txt && \
-echo "" && echo "=== 3. Console check (NO serial0!) ===" && grep console= /boot/firmware/cmdline.txt && \
+echo "" && echo "=== 3. Console check ===" && grep -o 'console=[^ ]*' /boot/firmware/cmdline.txt && \
 echo "" && echo "=== 4. Panic check (should be -1 or missing) ===" && grep -o 'panic=[^ ]*' /boot/firmware/cmdline.txt || echo "no panic - OK"; \
 echo "" && echo "=== 5. fstab (SSD) ===" && cat /mnt/ssd/etc/fstab | grep -v '^#' && \
 echo "" && echo "=== 6. Hostname ===" && cat /mnt/ssd/etc/hostname && \
 echo "" && echo "=== 7. Machine-id ===" && cat /mnt/ssd/etc/machine-id && \
-echo "" && echo "=== 8. LABELS ===" && blkid | grep -E '(mmcblk0p2|sda2).*LABEL' && \
+echo "" && echo "=== 8. LABELS ===" && sudo blkid | grep -E '(mmcblk0p2|sda2)' && \
 echo "" && echo "=== 9. k3s conflicts (should be 0) ===" && find /mnt/ssd/etc/systemd -name '*k3s*' 2>/dev/null | wc -l
 ```
 
@@ -260,11 +263,13 @@ sudo dmesg | grep -E '(I/O|error|offline)' | tail -20
 sudo tune2fs -L writable-sd /dev/mmcblk0p2
 
 # 2. Обновить ОБА cmdline.txt файла:
-PARTUUID=$(blkid -s PARTUUID -o value /dev/sda2)
-echo "console=serial0,115200 multipath=off dwc_otg.lpm_enable=0 console=tty1 root=PARTUUID=$PARTUUID rootfstype=ext4 panic=10 rootwait fixrtc cfg80211.ieee80211_regdom=RU cgroup_memory=1 cgroup_enable=memory" | sudo tee /boot/firmware/cmdline.txt
+PARTUUID=$(sudo blkid -s PARTUUID -o value /dev/sda2)
+echo "console=serial0,115200 console=tty1 root=PARTUUID=$PARTUUID rootfstype=ext4 fsck.repair=yes rootwait quiet plymouth.ignore-serial-consoles" | sudo tee /boot/firmware/cmdline.txt
 sudo cp /boot/firmware/cmdline.txt /boot/firmware/current/cmdline.txt
 sync
 ```
+
+**ПРИМЕЧАНИЕ:** Параметр panic НЕ включён - для отладки лучше видеть ошибки.
 
 ---
 

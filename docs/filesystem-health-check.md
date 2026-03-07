@@ -72,80 +72,69 @@ sudo fsck -t vfat -n /dev/mmcblk0p1
 | **LABEL на SSD** | Идентификатор раздела | Как initramfs ищет rootfs |
 | **PARTUUID** | Уникальный ID раздела | Явное указание rootfs |
 
-### ⚠️ ДВОЙНАЯ КОНФИГУРАЦИЯ — файлы на ОБАИХ носителях!
+### ⚠️ Правильная архитектура Ubuntu на Raspberry Pi
 
-| Файл | На microSD | На SSD | Должны быть |
-|------|-----------|-------|------------|
-| `cmdline.txt` | `/boot/firmware/` | `/boot/firmware/` | **ИДЕНТИЧНЫ** |
-| `current/cmdline.txt` | `/boot/firmware/` | `/boot/firmware/` | **ИДЕНТИЧНЫ** |
-| `config.txt` | `/boot/firmware/` | `/boot/firmware/` | Синхронизированы |
-| `fstab` | `/etc/` | `/etc/` | **РАЗНЫЕ** (указывают на свои разделы) |
-| `hostname` | `/etc/` | `/etc/` | **ОДИНАКОВЫ** |
-| `machine-id` | `/etc/` | `/etc/` | **ОДИНАКОВЫ** |
+| Файл | На microSD | На SSD | Описание |
+|------|-----------|-------|----------|
+| `cmdline.txt` | `/boot/firmware/` | ❌ Нет | **Только на microSD** |
+| `current/cmdline.txt` | `/boot/firmware/` | ❌ Нет | **Только на microSD** |
+| `config.txt` | `/boot/firmware/` | ❌ Нет | **Только на microSD** |
+| `fstab` | Не используется | `/etc/` | **Только на SSD** |
+| `hostname` | `/etc/` | `/etc/` | На обоих (должны совпадать) |
+| `machine-id` | `/etc/` | `/etc/` | На обоих (должны совпадать) |
 
-**Почему ОБА cmdline.txt должны быть ИДЕНТИЧНЫ:**
-- microSD cmdline.txt → используется при загрузке, указывает где искать rootfs
-- SSD cmdline.txt → используется системой ПОСЛЕ загрузки
-- Если различаются → путаница, ошибки, перезагрузка!
+**Правило: Boot partition ВСЕГДА остаётся на microSD!**
 
-**Проверка идентичности cmdline.txt:**
-```bash
-# При миграции (SSD смонтирован в /mnt/ssd):
-diff /boot/firmware/cmdline.txt /mnt/ssd/boot/firmware/cmdline.txt
-# Должен быть пустой вывод = файлы идентичны
-```
+- microSD содержит boot раздел → cmdline.txt, ядро, initramfs
+- SSD содержит только rootfs → fstab указывает на PARTUUID SSD
+- При загрузке firmware читает cmdline.txt с microSD и монтирует rootfs с SSD
 
 ### Последовательность согласованного изменения
 
 ```bash
 # ШАГ 1: Получить актуальные идентификаторы
-SSD_PARTUUID=$(blkid -s PARTUUID -o value /dev/sda2)
-SD_PARTUUID=$(blkid -s PARTUUID -o value /dev/mmcblk0p2)
+SSD_PARTUUID=$(sudo blkid -s PARTUUID -o value /dev/sda2)
+SD_BOOT_PARTUUID=$(sudo blkid -s PARTUUID -o value /dev/mmcblk0p1)
 echo "SSD PARTUUID: $SSD_PARTUUID"
-echo "SD PARTUUID:  $SD_PARTUUID"
+echo "SD boot PARTUUID: $SD_BOOT_PARTUUID"
 
 # ШАГ 2: Изменить LABEL на microSD (избегаем конфликта)
 sudo tune2fs -L writable-sd /dev/mmcblk0p2
 
 # ШАГ 3: Проверить что LABEL изменился
-blkid /dev/mmcblk0p2 | grep LABEL
+sudo blkid /dev/mmcblk0p2 | grep LABEL
 # Должно быть: LABEL="writable-sd"
 
-# ШАГ 4: Обновить fstab на microSD (используем PARTUUID)
-cat << 'EOF' | sudo tee /etc/fstab
-PARTUUID=${SD_PARTUUID}	/	ext4	errors=remount-ro	0	1
-PARTUUID=$(blkid -s PARTUUID -o value /dev/mmcblk0p1)	/boot/firmware	vfat	defaults	0	2
+# ШАГ 4: Обновить fstab на SSD (используем PARTUUID)
+cat << 'EOF' | sudo tee /mnt/ssd/etc/fstab
+# /etc/fstab: static file system information.
+# Ubuntu uses PARTUUID for deterministic mounting (not LABEL)
+PARTUUID=${SSD_PARTUUID}	/	ext4	defaults,noatime	0	1
+PARTUUID=${SD_BOOT_PARTUUID}	/boot/firmware	vfat	defaults	0	2
 EOF
 
 # ШАГ 5: Обновить cmdline.txt на microSD (ОБА файла!)
-# ВАЖНО: console=serial0 может вызывать зависание если UART не отвечает!
-# ВАЖНО: panic=10 вызывает перезагрузку при ошибке - используем panic=-1 для отладки
-CMDLINE="console=tty1 multipath=off dwc_otg.lpm_enable=0 root=PARTUUID=${SSD_PARTUUID} rootfstype=ext4 panic=-1 rootwait fixrtc cfg80211.ieee80211_regdom=RU cgroup_memory=1 cgroup_enable=memory"
+# ПРИМЕЧАНИЕ: console=serial0,115200 РАБОТАЕТ нормально на Raspberry Pi 4
+CMDLINE="console=serial0,115200 console=tty1 root=PARTUUID=${SSD_PARTUUID} rootfstype=ext4 fsck.repair=yes rootwait quiet plymouth.ignore-serial-consoles"
 echo "$CMDLINE" | sudo tee /boot/firmware/cmdline.txt > /dev/null
 echo "$CMDLINE" | sudo tee /boot/firmware/current/cmdline.txt > /dev/null
 sync
 
-# ШАГ 5.5: Обновить cmdline.txt на SSD (ОБА файла!)
-# КРИТИЧНО: SSD тоже имеет boot раздел со своими cmdline.txt!
-echo "$CMDLINE" | sudo tee /mnt/ssd/boot/firmware/cmdline.txt > /dev/null
-echo "$CMDLINE" | sudo tee /mnt/ssd/boot/firmware/current/cmdline.txt > /dev/null
-sync
-
-# ШАГ 6: Финальная проверка ВСЕХ файлов
+# ШАГ 6: Финальная проверка ВСЕХ критичных файлов
 echo "=== Проверка cmdline.txt ==="
 grep "root=PARTUUID=" /boot/firmware/cmdline.txt
 grep "root=PARTUUID=" /boot/firmware/current/cmdline.txt
 
-echo "=== Проверка fstab ==="
-cat /etc/fstab
+echo "=== Проверка fstab на SSD ==="
+cat /mnt/ssd/etc/fstab
 
 echo "=== Проверка LABELS ==="
-blkid /dev/mmcblk0p2 | grep LABEL
-blkid /dev/sda2 | grep LABEL
+sudo blkid /dev/mmcblk0p2 | grep LABEL
+sudo blkid /dev/sda2 | grep LABEL
 
 echo "=== Проверка PARTUUID ==="
 echo "cmdline: $(grep -o 'root=PARTUUID=[^ ]*' /boot/firmware/cmdline.txt)"
-echo "SSD:     $(blkid /dev/sda2 | grep -o 'PARTUUID=\"[^\"]*\"')"
+echo "SSD:     $(sudo blkid -s PARTUUID -o value /dev/sda2)"
 ```
 
 ### Чеклист согласованного изменения
@@ -153,13 +142,10 @@ echo "SSD:     $(blkid /dev/sda2 | grep -o 'PARTUUID=\"[^\"]*\"')"
 **ПЕРЕД перезагрузкой - проверить ВСЕ:**
 
 - [ ] **cmdline.txt (microSD)** содержит `root=PARTUUID=<SSD_PARTUUID>`
-- [ ] **cmdline.txt (SSD)** содержит `root=PARTUUID=<SSD_PARTUUID>`
-- [ ] **cmdline.txt (microSD) = cmdline.txt (SSD)** — ИДЕНТИЧНЫ!
+- [ ] **cmdline.txt (microSD)** содержит `root=PARTUUID=<SSD_PARTUUID>`
 - [ ] **current/cmdline.txt (microSD)** содержит `root=PARTUUID=<SSD_PARTUUID>`
-- [ ] **current/cmdline.txt (SSD)** содержит `root=PARTUUID=<SSD_PARTUUID>`
-- [ ] **cmdline.txt** НЕ содержит `console=serial0` (может вызывать зависание!)
-- [ ] **cmdline.txt** содержит `panic=-1` или нет panic (НЕ panic=10 - перезагрузка!)
-- [ ] **fstab (microSD)** использует PARTUUID microSD, не LABEL
+- [ ] **cmdline.txt** содержит console параметры (serial0 и tty1 работают)
+- [ ] **cmdline.txt** НЕ содержит panic=10 (или panic=-1 для отладки)
 - [ ] **fstab (SSD)** использует PARTUUID SSD, не LABEL
 - [ ] **LABEL microSD** = writable-sd (НЕ writable!)
 - [ ] **LABEL SSD** = writable
@@ -199,10 +185,13 @@ echo "SSD:     $(blkid /dev/sda2 | grep -o 'PARTUUID=\"[^\"]*\"')"
 # Проверить console параметры в cmdline.txt:
 cat /boot/firmware/cmdline.txt | grep -o 'console=[^ ]*'
 
-# ❌ ПЛОХО: console=serial0,115200
-# Если UART не отвечает или не сконфигурирован → система зависает → перезагрузка
+# ✅ ХОРОШО: console=tty1 или console=serial0,115200
+# Оба параметра работают нормально на Raspberry Pi 4
+# Стандартная Ubuntu конфигурация включает ОБА консольных вывода
 
-# ✅ ХОРОШО: console=tty1
+# ПРИМЕЧАНИЕ: Если используется ТОЛЬКО console=serial0 (без console=tty1),
+# то при проблемах с UART система может зависать
+```
 # Видео консоль всегда работает
 ```
 
@@ -284,10 +273,11 @@ echo "k3s files found (should be 0)"
 **Ожидаемый результат:**
 ```
 === Console check ===
-console=tty1                        ✅ НЕ serial0!
+console=serial0,115200              ✅ Стандартная конфигурация
+console=tty1                        ✅ Также присутствует
 
 === Panic check ===
-panic=-1                           ✅ НЕ 10!
+panic=-1                           ✅ Для отладки (ИЛИ отсутствует)
 
 === Hostname ===
 motya                               ✅ Правильный хост!
