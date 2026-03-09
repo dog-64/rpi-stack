@@ -47,6 +47,61 @@
 
 ---
 
+## 2026-03-07: motya k3s-agent — Node password rejected
+
+### Контекст:
+- **Хост:** motya (Raspberry Pi 4, k3s agent)
+- **Проблема:** Узел в статусе `NotReady`, kubelet не отправляет статус
+- **Последствия:** Pod'ы не могут запускаться на motya
+
+> **Подробности:** [→ k3s-node-password-rejected.md](k3s-node-password-rejected.md)
+
+### Симптомы:
+```bash
+ssh sema "sudo k3s kubectl get nodes"
+# motya   NotReady   ...
+
+ssh sema "sudo k3s kubectl describe node motya"
+# Kubelet stopped posting node status
+```
+
+### Диагностика:
+```bash
+ssh motya "sudo systemctl status k3s-agent"
+# Node password rejected, duplicate hostname or contents of
+# '/etc/rancher/node/password' may not match server node-passwd entry
+```
+
+### Причина:
+**После миграции SSD система была переустановлена → новый node-password → сервер не знает его.**
+
+K3s хранит связь "узел-пароль" для безопасности. При переустановке системы password меняется, но на сервере остаётся старый.
+
+### Решение:
+```bash
+# 1. Удалить узел с сервера
+ssh sema "sudo k3s kubectl delete node motya"
+
+# 2. Очистить данные агента
+ssh motya "sudo systemctl stop k3s-agent"
+ssh motya "sudo rm -rf /var/lib/rancher/k3s/agent/*"
+
+# 3. Перезапустить (авторегистрация с новым паролем)
+ssh motya "sudo systemctl start k3s-agent"
+```
+
+### Правило на будущее:
+```
+ПОСЛЕ миграции SSD на узле с k3s-agent ОБЯЗАТЕЛЬНО проверить:
+
+1. ssh <hostname> "sudo systemctl status k3s-agent"
+2. ssh sema "sudo k3s kubectl get nodes"
+
+Если NotReady + "Node password rejected" → выполнить решение выше.
+```
+
+---
+
 ## 2026-03-05: motya не загружается — cmdline.txt перезаписан
 
 ### Контекст:

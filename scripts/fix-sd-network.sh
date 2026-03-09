@@ -145,20 +145,42 @@ else
         echo "      В current/cmdline.txt должна быть правильная строка."
         echo "      Скопируйте её и добавьте cfg80211 параметр:"
         echo ""
+        # Стандартная cmdline для Ubuntu Raspberry Pi (fallback)
+        DEFAULT_CMDLINE="console=serial0,115200 multipath=off dwc_otg.lpm_enable=0 console=tty1 root=LABEL=writable rootfstype=ext4 panic=10 rootwait fixrtc"
+
         if [ -f "$MOUNT_POINT/current/cmdline.txt" ]; then
             CURRENT_CMDLINE=$(cat "$MOUNT_POINT/current/cmdline.txt")
+
+            # ПРОВЕРКА: current/cmdline.txt тоже может быть повреждён!
+            if [[ ! "$CURRENT_CMDLINE" =~ root= ]]; then
+                echo "      ВНИМАНИЕ: current/cmdline.txt ТОЖЕ повреждён (нет root=)!"
+                echo "      Использую стандартную cmdline строку..."
+                CURRENT_CMDLINE="$DEFAULT_CMDLINE"
+            fi
+
+            CMDLINE_FIXED="$CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU"
             echo "      Рекомендуемая строка:"
-            echo "      $CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU"
+            echo "      $CMDLINE_FIXED"
             echo ""
             echo "      Исправить автоматически? (y/n)"
             read -r answer
             if [[ "$answer" =~ ^[Yy]$ ]]; then
                 # Исправляем ОБОИ cmdline.txt файла!
-                CMDLINE_FIXED="$CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU"
                 echo "$CMDLINE_FIXED" > "$CMDLINE_FILE"
                 echo "$CMDLINE_FIXED" > "$MOUNT_POINT/current/cmdline.txt"
                 sync
-                echo "      cmdline.txt ИСПРАВЛЕН (оба файла)!"
+
+                # ВЕРИФИКАЦИЯ: проверяем что запись прошла успешно
+                if [ "$(cat "$CMDLINE_FILE")" != "$CMDLINE_FIXED" ]; then
+                    echo ""
+                    echo "      ========================================"
+                    echo "      ОШИБКА: Запись в cmdline.txt не удалась!"
+                    echo "      ========================================"
+                    diskutil unmount "$BOOT_PARTITION" > /dev/null 2>&1
+                    exit 1
+                fi
+
+                echo "      cmdline.txt ИСПРАВЛЕН и ПРОВЕРЕН (оба файла)!"
             fi
         else
             echo "      ОШИБКА: current/cmdline.txt не найден!"
