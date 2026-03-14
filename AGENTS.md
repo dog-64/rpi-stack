@@ -22,6 +22,11 @@ IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
 
 Приоритет задач: от начала файла к концу (сверху вниз).
 
+## Известные проблемы
+
+Полный список всех известных проблем и их решений:
+**[docs/known-issues-index.md](docs/known-issues-index.md)**
+
 ---
 
 ## Project Overview

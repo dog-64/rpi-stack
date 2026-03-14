@@ -224,6 +224,17 @@ make k3s-uninstall-agents
 
 **Подробнее:** [docs/k3s-install-manual.md](docs/k3s-install-manual.md)
 
+### Устранение неполадок k3s
+
+**Важные проблемы и решения:**
+
+- **Проблема: Узел в состоянии NotReady** → [Time Synchronization Problem](docs/k3s-node-time-sync-problem.md) — синхронизация времени перед установкой k3s
+
+### Все известные проблемы
+
+Полный список всех известных проблем и их решений:
+[→ Known Issues Index](docs/known-issues-index.md)
+
 ### Проверка подключения
 
 ```bash

@@ -55,6 +55,7 @@
 - **Последствия:** Pod'ы не могут запускаться на motya
 
 > **Подробности:** [→ k3s-node-password-rejected.md](k3s-node-password-rejected.md)
+> **Связано с:** [→ Time Synchronization Problem](k3s-node-time-sync-problem.md) — аналогичная проблема но с причиной в времени
 
 ### Симптомы:
 ```bash

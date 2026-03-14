@@ -127,3 +127,97 @@
     state: present
   become: true
   when: ansible_os_family == 'Debian'
+
+- name: Check available NTP services
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: ntp_services
+  loop:
+    - /usr/lib/systemd/systemd-timesyncd
+    - /usr/lib/systemd/system/chrony.service
+
+- name: Get detected NTP service
+  ansible.builtin.set_fact:
+    ntp_service: ""
+    ntp_name: ""
+  when: ntp_services.results[0].stat.exists and ntp_services.results[1].stat.exists
+
+- name: Use systemd-timesyncd if only it exists
+  ansible.builtin.set_fact:
+    ntp_service: systemd-timesyncd
+    ntp_name: systemd-timesyncd
+  when: ntp_services.results[0].stat.exists and not ntp_services.results[1].stat.exists
+
+- name: Use chrony if only it exists
+  ansible.builtin.set_fact:
+    ntp_service: chrony
+    ntp_name: chrony
+  when: ntp_services.results[1].stat.exists and not ntp_services.results[0].stat.exists
+
+- name: Default to chrony if both exist
+  ansible.builtin.set_fact:
+    ntp_service: chrony
+    ntp_name: chrony
+  when: ntp_services.results[1].stat.exists
+
+- name: Enable and run NTP service
+  ansible.builtin.systemd:
+    name: "{{ ntp_service }}"
+    state: started
+    enabled: true
+  become: true
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_service is defined
+
+- name: Force time sync
+  ansible.builtin.command: timedatectl set-ntp true
+  become: true
+  register: time_sync_result
+  changed_when: false
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_service is defined
+
+- name: Wait for time synchronization
+  ansible.builtin.shell: |
+    timeout={{ k3s_time_sync_timeout }}
+    elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+      if timedatectl status | grep -q "System clock synchronized: yes"; then
+        echo "Time synchronized: $(timedatectl status | grep 'Local time')"
+        exit 0
+      fi
+      sleep 2
+      elapsed=$((elapsed + 2))
+    done
+    timedatectl status
+    exit 1
+  register: time_sync_wait
+  retries: 2
+  delay: 5
+  until: time_sync_wait.rc == 0
+  become: true
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_service is defined
+  ignore_errors: true
+
+- name: Show NTP service status
+  ansible.builtin.debug:
+    msg: |
+      NTP Service: {{ ntp_service | default('None detected') }}
+      Status: {{ ntp_services.results | map(attribute='stat.exists') | list }}
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_services.results is defined
+
+- name: Warn if time not synchronized
+  ansible.builtin.debug:
+    msg: |
+      WARNING: System time is not synchronized! This may cause TLS certificate
+      validation errors in k3s. Check NTP connectivity and systemd-timesyncd status.
+  when:
+    - k3s_ensure_time_sync | bool
+    - time_sync_wait is defined
+    - time_sync_wait.rc != 0
