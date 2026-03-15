@@ -133,6 +133,17 @@ else
     echo "      Текущий cmdline.txt:"
     echo "      $CMDLINE_CONTENT"
 
+    # Проверяем наличие проблемных параметров
+    if [[ "$CMDLINE_CONTENT" =~ cgroup_disable=memory ]]; then
+        echo ""
+        echo "      ========================================"
+        echo "      ВНИМАНИЕ: Найден cgroup_disable=memory!"
+        echo "      ========================================"
+        echo "      Этот параметр БЛОКИРУЕТ k3s/Kubernetes!"
+        echo "      Он будет автоматически удалён при исправлении."
+        echo ""
+    fi
+
     # Проверяем наличие root= параметра
     if [[ ! "$CMDLINE_CONTENT" =~ root= ]]; then
         echo ""
@@ -158,7 +169,10 @@ else
                 CURRENT_CMDLINE="$DEFAULT_CMDLINE"
             fi
 
-            CMDLINE_FIXED="$CURRENT_CMDLINE cfg80211.ieee80211_regdom=RU"
+            # ВАЖНО: Удаляем cgroup_disable=memory - этот параметр БЛОКИРУЕТ k3s!
+            # k3s требует working memory cgroup для работы контейнеров
+            CMDLINE_CLEANED=$(echo "$CURRENT_CMDLINE" | sed 's/cgroup_disable=[^ ]* //g')
+            CMDLINE_FIXED="$CMDLINE_CLEANED cfg80211.ieee80211_regdom=RU"
             echo "      Рекомендуемая строка:"
             echo "      $CMDLINE_FIXED"
             echo ""
@@ -193,10 +207,12 @@ else
             CURRENT_CONTENT=$(cat "$MOUNT_POINT/current/cmdline.txt")
             if [[ ! "$CURRENT_CONTENT" =~ cfg80211.ieee80211_regdom ]]; then
                 echo "      ВНИМАНИЕ: current/cmdline.txt НЕ содержит cfg80211!"
-                echo "      Копирую cmdline.txt в current/..."
-                cp "$CMDLINE_FILE" "$MOUNT_POINT/current/cmdline.txt"
+                echo "      Очищаю cmdline.txt от k3s-блокирующих параметров и копирую в current/..."
+                # Очищаем от проблемных параметров перед копированием
+                CMDLINE_CLEANED=$(cat "$CMDLINE_FILE" | sed 's/cgroup_disable=[^ ]* //g')
+                echo "$CMDLINE_CLEANED" > "$MOUNT_POINT/current/cmdline.txt"
                 sync
-                echo "      current/cmdline.txt обновлён!"
+                echo "      current/cmdline.txt обновлён и очищен!"
             fi
         fi
     fi

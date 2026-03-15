@@ -1,5 +1,51 @@
 # Changelog - SSD Migration Project
 
+## 2026-03-15 - Добавлена документация прямого развертывания на SSD
+
+**Новый метод:** Вместо сложной миграции с SD → SSD, можно **прошить образ сразу на SSD**
+**П processo:**
+1. Записать Ubuntu image на SSD (как на SD карту)
+2. Настроить EEPROM для USB boot приоритета
+3. Применить network fix через `fix-sd-network.sh`
+4. Загрузиться и установить k3s
+
+**Преимущества:**
+- ✅ Проще: 3-4 шага вместо 8-10 при миграции
+- ✅ Надёжнее: нет повреждённых cmdline.txt, cgroup проблем
+- ✅ Чистее: свежая система без артефактов миграции
+
+**Документация:** [docs/ssd-direct-setup.md](docs/ssd-direct-setup.md)
+**Обновлён:** [docs/known-issues-index.md](docs/known-issues-index.md) - добавлена ссылка на новый метод
+
+---
+
+## 2026-03-15 - Исправлена обработка cgroup в скриптах и Ansible роли k3s
+
+**Проблема:** `cgroup_disable=memory` в cmdline.txt полностью блокирует работу k3s/Kubernetes
+**История:** Узел motya был NotReady из-за этого параметра, добавленного при миграции SSD
+
+**Исправлено:**
+1. **scripts/fix-sd-network.sh** - добавлена автоматическая очистка `cgroup_disable=memory`:
+   - Проверка на наличие параметра с предупреждением
+   - Автоматическое удаление при исправлении cmdline.txt
+   - Очистка при копировании между файлами
+
+2. **roles/k3s/tasks/prerequisites.yml** - обновлена логика работы с cgroups:
+   - Определение и удаление `cgroup_disable=memory` (БЛОКИРУЕТ k3s!)
+   - Использование flash-kernel для Ubuntu 25.10+ (вместо прямого редактирования)
+   - Добавление `cgroup_enable=memory` через `/etc/default/flash-kernel`
+   - Fallback на старый метод для legacy систем
+
+3. **docs/k3s-install-manual.md** - обновлена секция "Проблема: cgroup memory not enabled":
+   - Добавлена диагностика с проверкой параметров
+   - Решения для Ubuntu 25.10+ vs legacy систем
+   - Предупреждение о `cgroup_disable=memory`
+
+**ВАЖНО:** Ubuntu 25.10 на Raspberry Pi имеет cgroup v2 по умолчанию.
+Проблемы возникают ТОЛЬКО при явном отключении через `cgroup_disable=memory`.
+
+---
+
 ## 2026-03-14 - Аудит и реструктуризация CLAUDE.md
 
 **Оценка качества:** 75/100 (Grade C) → после реструктуризации

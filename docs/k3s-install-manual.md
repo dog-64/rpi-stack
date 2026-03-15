@@ -391,10 +391,53 @@ kubectl get events -n <namespace>
 
 ### Проблема: cgroup memory not enabled
 
-**Решение (Raspberry Pi):**
+**Симптомы:**
+- k3s-agent падает с ошибкой `failed to find memory cgroup (v2)`
+- Node остаётся в NotReady статусе
+- В логах: `Kubelet stopped posting node status`
+
+**Диагностика:**
 ```bash
-# Добавить в /boot/firmware/cmdline.txt
-cgroup_memory=1 cgroup_enable=memory
+# Проверить параметры загрузки ядра
+cat /proc/cmdline | grep cgroup
+
+# Проверить текущий статус cgroup
+stat -fc %T /sys/fs/cgroup/
+
+# Проверить что memory controller доступен
+cat /sys/fs/cgroup/cgroup.controllers
+```
+
+**Решение для Ubuntu 25.10:**
+```bash
+# Проверить cmdline.txt на наличие проблемных параметров
+sudo cat /boot/firmware/cmdline.txt
+
+# ЕСЛИ найден cgroup_disable=memory - УДАЛИТЬ его!
+# Вариант 1: Через flash-kernel (рекомендуется)
+echo "LINUX_KERNEL_CMDLINE_DEFAULTS=\"cgroup_enable=memory\"" | \
+  sudo tee -a /etc/default/flash-kernel
+sudo dpkg-reconfigure -p critical flash-kernel
+sudo reboot
+
+# Вариант 2: Ручное редактирование (если flash-kernel не работает)
+sudo nano /boot/firmware/cmdline.txt
+# УБРАТЬ: cgroup_disable=memory
+# ДОБАВИТЬ: cgroup_enable=memory (если его нет)
+```
+
+**ВАЖНО:** Ubuntu 25.10 на Raspberry Pi имеет cgroup v2 включённым по умолчанию.
+Проблемы возникают только если:
+1. В cmdline.txt есть `cgroup_disable=memory` (БЛОКИРУЕТ k3s!)
+2. Повреждена конфигурация после миграции на SSD
+
+**Проверка после исправления:**
+```bash
+# После перезагрузки проверить что параметр исчез
+cat /proc/cmdline | grep cgroup
+
+# Проверить что k3s-agent запустился
+systemctl status k3s-agent
 ```
 
 ---
