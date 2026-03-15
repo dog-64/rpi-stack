@@ -1,0 +1,241 @@
+---
+# Update boot configuration for SSD boot
+#
+# КРИТИЧНО ВАЖНО для Ubuntu:
+# - Ubuntu на Raspberry Pi использует /boot/firmware/cmdline.txt (ДВА файла: основной + current/)
+# - initramfs ищет root= параметр для монтирования rootfs
+# - НЕЛЬЗЯ полагаться на LABEL=writable потому что ОБА раздела (microSD и SSD) могут иметь этот label
+# - ВСЕГДА использовать явный root=PARTUUID=SSD в cmdline.txt
+
+# ============================================================================
+# ШАГ 1: Получить PARTUUID SSD
+# ============================================================================
+- name: Get SSD PARTUUID
+  ansible.builtin.shell: |
+    blkid -s PARTUUID -o value {{ ssd_device }}2
+  register: ssd_partuuid_output
+  changed_when: false
+  failed_when: ssd_partuuid_output.rc != 0 or ssd_partuuid_output.stdout == ""
+  become: true
+  tags:
+    - cmdline
+
+- name: Set SSD PARTUUID fact
+  ansible.builtin.set_fact:
+    ssd_partuuid: "{{ ssd_partuuid_output.stdout }}"
+  tags:
+    - cmdline
+
+- name: Display SSD PARTUUID
+  ansible.builtin.debug:
+    msg: "SSD PARTUUID: {{ ssd_partuuid }}"
+  tags:
+    - cmdline
+
+# ============================================================================
+# ШАГ 2: Изменить LABEL на microSD (чтобы избежать конфликта)
+# ============================================================================
+- name: Change microSD rootfs LABEL to writable-sd (avoid conflict)
+  ansible.builtin.command: tune2fs -L writable-sd {{ current_root_device }}
+  become: true
+  register: label_change
+  failed_when: label_change.rc != 0
+  when:
+    - current_root_device is defined
+    - "'mmcblk' in current_root_device or 'sd' in current_root_device"
+  tags:
+    - cmdline
+
+- name: Verify microSD LABEL was changed
+  ansible.builtin.shell: |
+    blkid -s LABEL -o value {{ current_root_device }}
+  register: sd_label_check
+  changed_when: false
+  become: true
+  when:
+    - current_root_device is defined
+    - "'mmcblk' in current_root_device or 'sd' in current_root_device"
+  tags:
+    - cmdline
+
+- name: Display microSD LABEL
+  ansible.builtin.debug:
+    msg: "microSD LABEL: {{ sd_label_check.stdout }}"
+  when:
+    - current_root_device is defined
+    - "'mmcblk' in current_root_device or 'sd' in current_root_device"
+  tags:
+    - cmdline
+
+# ============================================================================
+# ШАГ 3: Определить путь к cmdline.txt
+# ============================================================================
+- name: Check cmdline.txt location for Ubuntu
+  ansible.builtin.stat:
+    path: "/boot/firmware/cmdline.txt"
+  register: cmdline_firmware_stat
+  tags:
+    - cmdline
+
+- name: Set cmdline path
+  ansible.builtin.set_fact:
+    cmdline_path: "{{ '/boot/firmware/cmdline.txt' if cmdline_firmware_stat.stat.exists else '/boot/cmdline.txt' }}"
+    cmdline_current_path: "{{ '/boot/firmware/current/cmdline.txt' if cmdline_firmware_stat.stat.exists else '/boot/cmdline.txt' }}"
+  tags:
+    - cmdline
+
+- name: Display cmdline path
+  ansible.builtin.debug:
+    msg: "cmdline.txt path: {{ cmdline_path }}"
+  tags:
+    - cmdline
+
+# ============================================================================
+# ШАГ 4: Прочитать текущий cmdline.txt
+# ============================================================================
+- name: Read current cmdline.txt
+  ansible.builtin.slurp:
+    src: "{{ cmdline_path }}"
+  register: cmdline_content
+  become: true
+  tags:
+    - cmdline
+
+- name: Create backup of original cmdline.txt
+  ansible.builtin.copy:
+    src: "{{ cmdline_path }}"
+    dest: "{{ cmdline_path }}.backup"
+    mode: '0644'
+    remote_src: true
+  become: true
+  tags:
+    - cmdline
+
+- name: Display current cmdline.txt
+  ansible.builtin.debug:
+    msg: "{{ cmdline_content.content | b64decode }}"
+  tags:
+    - cmdline
+
+# ============================================================================
+# ШАГ 5: Обновить cmdline.txt с root=PARTUUID=SSD
+# ============================================================================
+- name: Update cmdline.txt root parameter to use SSD PARTUUID
+  ansible.builtin.shell: |
+    CMDLINE_CONTENT=$(cat {{ cmdline_path }})
+    # Удаляем существующий root= параметр
+    NEW_CMDLINE=$(echo "$CMDLINE_CONTENT" | sed 's/root=[^ ]* //g')
+    # Добавляем root=PARTUUID=SSD
+    echo "$NEW_CMDLINE root=PARTUUID={{ ssd_partuuid }}" > {{ cmdline_path }}
+    sync
+  become: true
+  register: cmdline_update
+  changed_when: true
+  tags:
+    - cmdline
+
+# ============================================================================
+# ШАГ 6: Обновить current/cmdline.txt (Ubuntu tryboot mechanism)
+# ============================================================================
+- name: Update current/cmdline.txt (Ubuntu tryboot backup)
+  ansible.builtin.copy:
+    src: "{{ cmdline_path }}"
+    dest: "{{ cmdline_current_path }}"
+    mode: '0644'
+    remote_src: true
+  become: true
+  when:
+    - cmdline_path != cmdline_current_path
+  tags:
+    - cmdline
+
+- name: Sync files to disk
+  ansible.builtin.command: sync
+  become: true
+  tags:
+    - cmdline
+
+# ============================================================================
+# ШАГ 7: Верификация - критически важная проверка!
+# ============================================================================
+- name: Read updated cmdline.txt
+  ansible.builtin.slurp:
+    src: "{{ cmdline_path }}"
+  register: cmdline_updated
+  become: true
+  tags:
+    - cmdline
+
+- name: Read updated current/cmdline.txt
+  ansible.builtin.slurp:
+    src: "{{ cmdline_current_path }}"
+  register: cmdline_current_updated
+  become: true
+  when:
+    - cmdline_path != cmdline_current_path
+  tags:
+    - cmdline
+
+- name: Display updated cmdline.txt
+  ansible.builtin.debug:
+    msg: "{{ cmdline_updated.content | b64decode }}"
+  tags:
+    - cmdline
+
+- name: CRITICAL - Verify cmdline.txt contains SSD PARTUUID
+  ansible.builtin.assert:
+    that:
+      - "'root=PARTUUID=' + ssd_partuuid in cmdline_updated.content | b64decode"
+    fail_msg: |
+      ❌ КРИТИЧЕСКАЯ ОШИБКА: cmdline.txt НЕ содержит root=PARTUUID={{ ssd_partuuid }}!
+      Текущий cmdline.txt: {{ cmdline_updated.content | b64decode }}
+      Система НЕ загрузится с SSD!
+    success_msg: "✅ cmdline.txt содержит root=PARTUUID={{ ssd_partuuid }}"
+    quiet: true
+  tags:
+    - cmdline
+
+- name: CRITICAL - Verify current/cmdline.txt contains SSD PARTUUID (Ubuntu)
+  ansible.builtin.assert:
+    that:
+      - "'root=PARTUUID=' + ssd_partuuid in cmdline_current_updated.content | b64decode"
+    fail_msg: |
+      ❌ КРИТИЧЕСКАЯ ОШИБКА: current/cmdline.txt НЕ содержит root=PARTUUID={{ ssd_partuuid }}!
+      Текущий current/cmdline.txt: {{ cmdline_current_updated.content | b64decode }}
+      Система НЕ загрузится после tryboot отката!
+    success_msg: "✅ current/cmdline.txt содержит root=PARTUUID={{ ssd_partuuid }}"
+    quiet: true
+  when:
+    - cmdline_path != cmdline_current_path
+  tags:
+    - cmdline
+
+- name: CRITICAL - Verify microSD LABEL is NOT writable
+  ansible.builtin.assert:
+    that:
+      - sd_label_check.stdout != "writable"
+    fail_msg: |
+      ❌ КРИТИЧЕСКАЯ ОШИБКА: microSD LABEL всё ещё 'writable'!
+      initramfs найдёт microSD первым вместо SSD!
+      Выполните: sudo tune2fs -L writable-sd {{ current_root_device }}
+    success_msg: "✅ microSD LABEL изменён на {{ sd_label_check.stdout }}"
+    quiet: true
+  when:
+    - current_root_device is defined
+    - "'mmcblk' in current_root_device or 'sd' in current_root_device"
+  tags:
+    - cmdline
+
+# ============================================================================
+# ШАГ 8: Финальное сообщение
+# ============================================================================
+- name: Display success message
+  ansible.builtin.debug:
+    msg: |
+      ✅ cmdline.txt успешно обновлён для загрузки с SSD!
+      - root=PARTUUID={{ ssd_partuuid }}
+      - microSD LABEL: {{ sd_label_check.stdout | default('N/A') }}
+      - ОБОИ cmdline.txt файла обновлены (Ubuntu tryboot)
+      ПЕРЕД перезагрузкой: проверь что система найдёт rootfs на SSD
+  tags:
+    - cmdline

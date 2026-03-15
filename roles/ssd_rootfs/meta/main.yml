@@ -1,0 +1,26 @@
+---
+# meta/main.yml for ssd_rootfs
+
+galaxy_info:
+  role_name: ssd_rootfs
+  author: dog
+  description: Перенос rootfs Raspberry Pi с microSD на SSD
+  company: rpi_stack
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+    - name: Raspberry Pi OS
+      versions:
+        - all
+  galaxy_tags:
+    - raspberry
+    - pi
+    - storage
+    - ssd
+    - migration
+
+dependencies: []

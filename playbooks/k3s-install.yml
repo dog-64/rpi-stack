@@ -1,0 +1,33 @@
+---
+- name: Установка k3s cluster
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    k3s_token: ""
+    k3s_cluster_init: false
+
+  pre_tasks:
+    - name: Отображение информации о хосте
+      ansible.builtin.debug:
+        msg: "Хост: {{ inventory_hostname }}, IP: {{ ansible_host }}, Роль: {{ k3s_role | default('agent') }}"
+
+  roles:
+    - role: k3s
+      tags:
+        - k3s
+
+  post_tasks:
+    - name: Информация о кластере
+      ansible.builtin.debug:
+        msg: 
+          - "=========================================="
+          - "k3s cluster установлен!"
+          - "Server: {{ groups['k3s_server'] | join(', ') }}"
+          - "Agents: {{ groups['k3s_agent'] | default([]) | join(', ') }}"
+          - "API: https://{{ hostvars[groups['k3s_server'][0]]['ansible_host'] }}:6443"
+          - "=========================================="
+      run_once: true
+      delegate_to: "{{ groups['k3s_server'][0] }}"
+      when: groups['k3s_server'] is defined

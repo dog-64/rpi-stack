@@ -1,73 +1,95 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## ⚠️ КРИТИЧНО — читать ПЕРЕД любыми действиями
 
-- всегда проверяй что получилось в результате своих изменений
-- никогда не ври
+**docs/known-issues-index.md** — индекс всех известных проблем и решений
+**docs/lessons-learned.md** — ошибки которые НЕЛЬЗЯ повторять
+**docs/ssd-migration-checklist.md** — чеклист миграции на SSD
+**docs/usb-adapters-tested.md** — какие адаптеры работают
 
-## Роль: Senior DevOps Engineer
+---
 
-Работай с этим проектом как **опытный DevOps инженер** в совершенстве знающий:
-- **Ansible** — best practices, роли, модули, идемпотентность
-- **Raspberry Pi** — архитектура ARM, Raspberry Pi OS, специфика железа
-
-## SpecKit
-
-Спецификации для AI агентов находятся в `.github/spec-kit/`:
-
-- **[agents.md](.github/spec-kit/agents.md)** — Задачи для выполнения (приоритет сверху вниз)
-- **[constitution.md](.github/spec-kit/constitution.md)** — Best practices для Ansible, K8s, K3s
+## Часто используемые команды
 
 ```bash
-make spec-kit-constitution  # Показать best practices
+make k3s-status    # Статус k3s кластера
+make ping          # Проверка связи со всеми хостами
+make todo          # Открыть список задач
+make k3s-install   # Установка k3s cluster
+make k3s-uninstall # Удаление k3s со всех хостов
+make info          # Информация о системе на хостах
+make help          # Все доступные команды
 ```
+
+---
+
+## Gotchas (критичные особенности)
+
+- **Ubuntu 25.10 НЕ требует** `cgroup_memory=1` в cmdline.txt для k3s (проверено на osya)
+- **Проверяй конфиг на рабочей ноде** (например osya) перед изменениями
+- **Ubuntu использует** `/boot/firmware/cmdline.txt`, НЕ `/boot/cmdline.txt`
+- **Raspberry Pi без RTC** — время сбрасывается при перезагрузке → NTP должен работать всегда
+- **После каждого изменения** записывай краткое описание в `docs/changelog.md`
+
+---
 
 ## Проект
 
-Это проект Ansible для управления конфигурацией и автоматизации инфраструктуры Raspberry Pi кластера.
+**Цель:** Ansible конфигурация Raspberry Pi кластера
+**Целевая ОС:** Ubuntu 25.10 (Raspberry Pi OS НЕ рекомендуется для K8s)
+**Задачи:** `Todo.md` (приоритет сверху вниз)
 
-## Общие команды Ansible
+### K3s на Ubuntu 25.10
 
-```bash
-# Запуск playbook
-ansible-playbook playbook.yml
+- **НЕ требует** `cgroup_memory=1` в cmdline.txt
+- При проблемах — проверяй на рабочей ноде (osya)
+- Время синхронизируется автоматически при установке
 
-# Запуск playbook с указанием inventory
-ansible-playbook -i inventory playbook.yml
+### SSD миграция
 
-# Проверка синтаксиса playbook
-ansible-playbook --syntax-check playbook.yml
+- Ubuntu использует `/boot/firmware/cmdline.txt`
+- Используй **PARTUUID**, НЕ LABEL
+- `docs/ssd-migration-manual.md` — полное руководство
 
-# Проверка playbook без внесения изменений (dry-run)
-ansible-playbook --check playbook.yml
-
-# Линтинг Ansible кода (требуется ansible-lint)
-ansible-lint playbook.yml
-
-# Отображение доступных модулей
-ansible-doc -l
-
-# Документация по конкретному модулю
-ansible-doc module_name
-
-# Проверка соединения с хостами
-ansible -i inventory all -m ping
-```
+---
 
 ## Структура проекта
 
-Типичная структура Ansible проекта (будет развиваться):
+```
+playbooks/              # k3s-install.yml, ssd-migrate.yml, verify-ssd.yml
+roles/k3s/              # установка k3s (server + agent)
+roles/ssd_rootfs/       # миграция rootfs на SSD
+docs/                   # документация, проблемы, чеклисты
+Makefile                # все основные операции
+inventory.yml           # инвентарь хостов (в корне!)
+ansible.cfg             # конфигурация Ansible
+Todo.md                 # список задач
+```
 
-- `inventory/` — файлы инвентаризации (хосты и группы)
-- `playbooks/` — Ansible playbooks
-- `roles/` — переиспользуемые роли
-- `group_vars/` — переменные для групп хостов
-- `host_vars/` — переменные для отдельных хостов
-- `ansible.cfg` — конфигурация Ansible
+---
 
-## Рекомендации по разработке
+## Роль: Senior DevOps Engineer
 
-- Используйте YAML с отступами в 2 пробела
-- Тестируйте playbooks в режиме `--check` перед применением
-- Используйте осмысленные имена для tasks и playbooks
-- Документируйте сложные задачи в комментариях
+Работай как **опытный DevOps инженер** знающий:
+- **Ansible** — best practices, роли, модули, идемпотентность
+- **Raspberry Pi** — архитектура ARM, Ubuntu 25.10, специфика железа
+
+При проблемах с Raspberry Pi/Ubuntu используй `rp-search` агента.
+
+---
+
+## Ansible команды (базовые)
+
+```bash
+# Запуск playbook
+ansible-playbook -i inventory.yml playbooks/k3s-install.yml
+
+# Проверка синтаксиса
+ansible-playbook --syntax-check playbooks/k3s-install.yml
+
+# Dry-run (без изменений)
+ansible-playbook -i inventory.yml playbooks/k3s-install.yml --check
+
+# Проверка соединения
+ansible -i inventory.yml all -m ping
+```

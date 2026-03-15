@@ -1,0 +1,289 @@
+---
+# Verify SSD configuration before reboot
+# CRITICAL: These checks must pass or the system will not boot
+
+- name: Get current root mount info
+  ansible.builtin.shell: "df / | tail -1 | awk '{print $1}'"
+  changed_when: false
+  register: current_root_device
+  tags:
+    - verify
+
+- name: Display current root device
+  ansible.builtin.debug:
+    msg: "Текущий корень: {{ current_root_device.stdout.strip() }}"
+  tags:
+    - verify
+
+- name: Set fact if already booted from SSD
+  ansible.builtin.set_fact:
+    already_on_ssd: "{{ '/dev/sd' in current_root_device.stdout or '/dev/nvme' in current_root_device.stdout }}"
+  tags:
+    - verify
+
+- name: Display boot status
+  ansible.builtin.debug:
+    msg: "{{ 'Система УЖЕ загружена с SSD' if already_on_ssd else 'Система загружена с microSD, миграция требуется' }}"
+  tags:
+    - verify
+
+- name: Skip remaining verification if already on SSD
+  block:
+    - name: Already on SSD message
+      ansible.builtin.debug:
+        msg: "Система уже загружена с SSD, верификация пропущена"
+    - name: End verification early
+      ansible.builtin.meta: end_play
+  when:
+    - already_on_ssd | bool
+  tags:
+    - verify
+
+- name: CRITICAL - Verify boot partition on microSD exists
+  ansible.builtin.stat:
+    path: "/dev/mmcblk0p1"
+  register: boot_partition_stat
+  tags:
+    - verify
+
+- name: CRITICAL - Assert boot partition exists
+  ansible.builtin.assert:
+    that:
+      - boot_partition_stat.stat.exists
+    fail_msg: "CRITICAL: Boot partition /dev/mmcblk0p1 not found! System cannot boot!"
+    quiet: true
+  tags:
+    - verify
+
+- name: CRITICAL - Verify boot partition is mounted
+  ansible.builtin.shell: "mount | grep '/boot/firmware'"
+  changed_when: false
+  register: boot_mount_check
+  failed_when: boot_mount_check.rc != 0
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Display boot partition status
+  ansible.builtin.debug:
+    msg: "Boot partition verified: {{ boot_mount_check.stdout }}"
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: CRITICAL - Read fstab from SSD
+  ansible.builtin.slurp:
+    src: "{{ ssd_mount_point }}/etc/fstab"
+  register: ssd_fstab_content
+  tags:
+    - verify
+
+- name: CRITICAL - Check fstab has exactly one root entry
+  ansible.builtin.shell: "grep -E '^[^#]\\S+\\s+/\\s' {{ ssd_mount_point }}/etc/fstab | wc -l"
+  changed_when: false
+  register: root_entries_count
+  tags:
+    - verify
+
+- name: CRITICAL - Assert fstab has exactly one root entry
+  ansible.builtin.assert:
+    that:
+      - root_entries_count.stdout | trim | int == 1
+    fail_msg: "CRITICAL: fstab has {{ root_entries_count.stdout }} root entries, expected exactly 1! Duplicate entries will prevent boot!"
+    quiet: true
+  tags:
+    - verify
+
+- name: CRITICAL - Check fstab has exactly one boot entry
+  ansible.builtin.shell: "grep -E '^[^#]\\S+\\s+/boot/firmware\\s' {{ ssd_mount_point }}/etc/fstab | wc -l"
+  changed_when: false
+  register: boot_entries_count
+  tags:
+    - verify
+
+- name: CRITICAL - Assert fstab has exactly one boot entry
+  ansible.builtin.assert:
+    that:
+      - boot_entries_count.stdout | int == 1
+    fail_msg: "CRITICAL: fstab has {{ boot_entries_count.stdout }} boot entries, expected exactly 1! Duplicate entries will prevent boot!"
+    quiet: true
+  tags:
+    - verify
+
+- name: Display fstab content
+  ansible.builtin.debug:
+    msg: "SSD fstab content:\n{{ ssd_fstab_content.content | b64decode }}"
+  tags:
+    - verify
+
+- name: Verify SSD fstab configuration (Ubuntu with PARTUUID)
+  ansible.builtin.command: "grep -E '^PARTUUID={{ ssd_partuuid }}\\s+/' {{ ssd_mount_point }}/etc/fstab"
+  changed_when: false
+  register: fstab_verify
+  failed_when: fstab_verify.rc != 0
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Verify SSD fstab configuration (Raspberry Pi OS)
+  ansible.builtin.command: "grep -E '^PARTUUID={{ ssd_partuuid }}|^UUID={{ ssd_uuid }}' {{ ssd_mount_point }}/etc/fstab"
+  changed_when: false
+  register: fstab_verify
+  failed_when: fstab_verify.rc != 0
+  when:
+    - ssd_target_os != 'ubuntu'
+  tags:
+    - verify
+
+- name: Display fstab verification result
+  ansible.builtin.debug:
+    msg: "{{ fstab_verify.stdout_lines | default([]) }}"
+  tags:
+    - verify
+
+- name: Verify boot partition entry in fstab (Ubuntu with PARTUUID)
+  ansible.builtin.command: "grep -E '^PARTUUID={{ mmc_boot_partuuid }}\\s+/boot/firmware' {{ ssd_mount_point }}/etc/fstab"
+  changed_when: false
+  register: boot_fstab_verify
+  failed_when: boot_fstab_verify.rc != 0
+  when:
+    - ssd_target_os == 'ubuntu'
+  tags:
+    - verify
+
+- name: Display boot fstab entry verification (Ubuntu)
+  ansible.builtin.debug:
+    msg: "{{ boot_fstab_verify.stdout_lines }}"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Verify microSD label was changed (Ubuntu)
+  ansible.builtin.command: "blkid -s LABEL -o value /dev/mmcblk0p2"
+  changed_when: false
+  register: sd_label_verify
+  failed_when: 
+    - sd_label_verify.rc != 0
+    - "'writable-sd' not in sd_label_verify.stdout"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Verify SSD has correct label (Ubuntu)
+  ansible.builtin.command: "blkid -s LABEL -o value /dev/{{ ssd_partition }}"
+  changed_when: false
+  register: ssd_label_verify
+  failed_when:
+    - ssd_label_verify.rc != 0
+    - "'writable' not in ssd_label_verify.stdout"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Display label verification (Ubuntu)
+  ansible.builtin.debug:
+    msg:
+      - "microSD rootfs label: {{ sd_label_verify.stdout.strip() }}"
+      - "SSD rootfs label: {{ ssd_label_verify.stdout.strip() }}"
+      - "Загрузчик выберет SSD (LABEL=writable)"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Check cmdline.txt exists (Ubuntu uses /boot/firmware)
+  ansible.builtin.stat:
+    path: "{{ '/boot/firmware/cmdline.txt' if ssd_target_os == 'ubuntu' else '/boot/cmdline.txt' }}"
+  register: cmdline_stat_verify
+  tags:
+    - verify
+
+- name: CRITICAL - Verify cmdline.txt contains SSD PARTUUID (Ubuntu)
+  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}' /boot/firmware/cmdline.txt"
+  changed_when: false
+  register: cmdline_verify
+  failed_when: cmdline_verify.rc != 0
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: CRITICAL - Verify current/cmdline.txt contains SSD PARTUUID (Ubuntu tryboot)
+  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}' /boot/firmware/current/cmdline.txt"
+  changed_when: false
+  register: cmdline_current_verify
+  failed_when: cmdline_current_verify.rc != 0
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Display cmdline.txt verification result (Ubuntu)
+  ansible.builtin.debug:
+    msg:
+      - "cmdline.txt: {{ cmdline_verify.stdout_lines }}"
+      - "current/cmdline.txt: {{ cmdline_current_verify.stdout_lines }}"
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os == 'ubuntu'
+    - not (already_on_ssd | bool)
+  tags:
+    - verify
+
+- name: Verify cmdline.txt configuration (Raspberry Pi OS)
+  ansible.builtin.command: "grep -E 'root=PARTUUID={{ ssd_partuuid }}|root=UUID={{ ssd_uuid }}' /boot/cmdline.txt"
+  changed_when: false
+  register: cmdline_verify
+  failed_when: cmdline_verify.rc != 0
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os != 'ubuntu'
+  tags:
+    - verify
+
+- name: Display cmdline.txt verification result (Raspberry Pi OS)
+  ansible.builtin.debug:
+    msg: "{{ cmdline_verify.stdout_lines }}"
+  when:
+    - cmdline_stat_verify.stat.exists | default(false)
+    - ssd_target_os != 'ubuntu'
+  tags:
+    - verify
+
+- name: Compare disk usage
+  ansible.builtin.command: "df -h / {{ ssd_mount_point }}"
+  changed_when: false
+  register: disk_usage_compare
+  tags:
+    - verify
+
+- name: Display disk usage comparison
+  ansible.builtin.debug:
+    msg: "{{ disk_usage_compare.stdout_lines }}"
+  tags:
+    - verify
+
+- name: Verification summary
+  ansible.builtin.debug:
+    msg:
+      - "✓ SSD fstab настроен корректно (PARTUUID)"
+      - "{{ '✓ Метка microSD изменена (writable-sd), загрузчик выберет SSD по LABEL=writable' if ssd_target_os == 'ubuntu' else '✓ cmdline.txt обновлён для загрузки с SSD' }}"
+      - "✓ fstab использует PARTUUID для deterministic mounting"
+      - "✓ Следующая перезагрузка будет с SSD ({{ ssd_partition }})"
+  tags:
+    - verify

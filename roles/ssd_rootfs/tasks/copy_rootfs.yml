@@ -1,0 +1,135 @@
+---
+# Copy root filesystem to SSD
+
+- name: Check if SSD has existing rootfs
+  ansible.builtin.stat:
+    path: "{{ ssd_mount_point }}/etc"
+  register: ssd_rootfs_check
+  tags:
+    - copy
+
+- name: Set ssd_rootfs_exists fact
+  ansible.builtin.set_fact:
+    ssd_rootfs_exists: "{{ ssd_rootfs_check.stat.exists }}"
+  tags:
+    - copy
+
+- name: Skip copy if rootfs already exists on SSD
+  ansible.builtin.debug:
+    msg: "Пропускаем копирование - на SSD уже есть rootfs"
+  when:
+    - ssd_rootfs_exists | bool
+  tags:
+    - copy
+
+# Копирование только если нет rootfs на SSD
+- name: Copy root filesystem to SSD (this may take a while)
+  ansible.builtin.shell: |
+    rsync -axHAWX --info=progress2 \
+      --exclude=/mnt/** \
+      --exclude={{ ssd_mount_point }}/** \
+      --exclude=/tmp/** \
+      --exclude=/proc/** \
+      --exclude=/sys/** \
+      --exclude=/dev/** \
+      --exclude=/run/** \
+      / {{ ssd_mount_point }}/
+  become: true
+  when:
+    - not (ssd_rootfs_exists | bool)
+  register: rsync_result
+  tags:
+    - copy
+
+- name: Display copy result
+  ansible.builtin.debug:
+    msg: "Копирование завершено. RC: {{ rsync_result.rc }}"
+  when:
+    - not (ssd_rootfs_exists | bool)
+    - rsync_result.rc is defined
+  tags:
+    - copy
+
+# Для Ubuntu: меняем метку microSD rootfs после успешного копирования
+# Это заставит загрузчик выбрать SSD с меткой "writable"
+# Используем tune2fs т.к. e2label иногда не работает корректно
+- name: Change microSD rootfs label to avoid boot conflict (Ubuntu)
+  ansible.builtin.command: "tune2fs -L writable-sd /dev/mmcblk0p2"
+  become: true
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (ssd_rootfs_exists | bool)
+  register: sd_label_changed
+  tags:
+    - copy
+
+- name: Display microSD label change
+  ansible.builtin.debug:
+    msg: "Метка microSD rootfs изменена на writable-sd для избежания конфликта при загрузке"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - not (ssd_rootfs_exists | bool)
+    - sd_label_changed is changed
+  tags:
+    - copy
+
+# Получаем PARTUUID microSD для обновления fstab
+- name: Get microSD boot PARTUUID
+  ansible.builtin.shell: "blkid -s PARTUUID -o value /dev/mmcblk0p1"
+  become: true
+  changed_when: false
+  register: mmc_boot_partuuid_output
+  when:
+    - ssd_target_os == 'ubuntu'
+    - sd_label_changed is changed
+  tags:
+    - copy
+
+- name: Get microSD root PARTUUID
+  ansible.builtin.shell: "blkid -s PARTUUID -o value /dev/mmcblk0p2"
+  become: true
+  changed_when: false
+  register: mmc_root_partuuid_output
+  when:
+    - ssd_target_os == 'ubuntu'
+    - sd_label_changed is changed
+  tags:
+    - copy
+
+- name: Set microSD PARTUUID facts
+  ansible.builtin.set_fact:
+    mmc_boot_partuuid: "{{ mmc_boot_partuuid_output.stdout }}"
+    mmc_root_partuuid: "{{ mmc_root_partuuid_output.stdout }}"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - sd_label_changed is changed
+  tags:
+    - copy
+
+# CRITICAL: Обновляем fstab на microSD после изменения метки
+# Иначе systemd не найдет root filesystem при следующей загрузке с SSD
+- name: Update microSD fstab to use PARTUUID (Ubuntu)
+  ansible.builtin.copy:
+    dest: /etc/fstab
+    content: |
+      # /etc/fstab: static file system information.
+      # Ubuntu uses PARTUUID for deterministic mounting (not LABEL)
+      # Updated after microSD label change to avoid systemd confusion
+      PARTUUID={{ mmc_root_partuuid }}	/	ext4	defaults,noatime	0	1
+      PARTUUID={{ mmc_boot_partuuid }}	/boot/firmware	vfat	defaults	0	2
+    backup: true
+  become: true
+  when:
+    - ssd_target_os == 'ubuntu'
+    - sd_label_changed is changed
+  tags:
+    - copy
+
+- name: Display microSD fstab update
+  ansible.builtin.debug:
+    msg: "microSD fstab обновлен с PARTUUID для избежания проблем при загрузке с SSD"
+  when:
+    - ssd_target_os == 'ubuntu'
+    - sd_label_changed is changed
+  tags:
+    - copy

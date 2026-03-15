@@ -1,0 +1,84 @@
+---
+# main file for ssd_rootfs role
+
+- name: Import detect_ssd tasks
+  ansible.builtin.include_tasks: detect_ssd.yml
+  tags:
+    - ssd_rootfs
+    - detect
+
+- name: Import check_space tasks
+  ansible.builtin.include_tasks: check_space.yml
+  tags:
+    - ssd_rootfs
+    - check
+
+- name: Import check_prerequisites tasks
+  ansible.builtin.include_tasks: check_prerequisites.yml
+  tags:
+    - ssd_rootfs
+    - prereq
+
+- name: Import prepare_ssd tasks
+  ansible.builtin.include_tasks: prepare_ssd.yml
+  tags:
+    - ssd_rootfs
+    - prepare
+
+- name: Import mount_ssd tasks
+  ansible.builtin.include_tasks: mount_ssd.yml
+  tags:
+    - ssd_rootfs
+    - mount
+
+# Расширение ДО копирования - чтобы было достаточно места
+- name: Import expand_partition tasks
+  ansible.builtin.include_tasks: expand_partition.yml
+  when:
+    - not (ssd_rootfs_exists | default(false) | bool) or 'expand' in ansible_run_tags
+  tags:
+    - ssd_rootfs
+    - expand
+
+- name: Import copy_rootfs tasks
+  ansible.builtin.include_tasks: copy_rootfs.yml
+  when: not (ssd_rootfs_exists | default(false) | bool)
+  tags:
+    - ssd_rootfs
+    - copy
+
+- name: Import update_fstab tasks
+  ansible.builtin.include_tasks: update_fstab.yml
+  tags:
+    - ssd_rootfs
+    - fstab
+
+- name: Import update_cmdline tasks
+  ansible.builtin.include_tasks: update_cmdline.yml
+  tags:
+    - ssd_rootfs
+    - cmdline
+
+- name: Import verify tasks
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - ssd_rootfs
+    - verify
+
+- name: Import cleanup tasks
+  ansible.builtin.include_tasks: cleanup.yml
+  tags:
+    - ssd_rootfs
+    - cleanup
+
+- name: Reboot to boot from SSD
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    connect_timeout: 10
+    test_command: whoami
+  become: true
+  when:
+    - ssd_reboot_after_config | default(true) | bool
+  tags:
+    - ssd_rootfs
+    - reboot

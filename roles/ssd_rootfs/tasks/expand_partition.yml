@@ -1,0 +1,129 @@
+---
+# Expand SSD partition to use full disk size
+# Важно: расширение делается ДО копирования rootfs, чтобы было достаточно места
+
+- name: Check if growpart is available
+  ansible.builtin.command: which growpart
+  changed_when: false
+  register: growpart_check
+  failed_when: false
+  tags:
+    - expand
+
+- name: Display growpart availability
+  ansible.builtin.debug:
+    msg: "growpart {{ 'доступен' if growpart_check.rc == 0 else 'НЕ доступен' }}"
+  tags:
+    - expand
+
+- name: Get current partition size
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_partition }} -o SIZE -n -d"
+  changed_when: false
+  register: current_part_size
+  tags:
+    - expand
+
+- name: Get disk size
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_device }} -o SIZE -n -d"
+  changed_when: false
+  register: disk_size
+  tags:
+    - expand
+
+- name: Display size information
+  ansible.builtin.debug:
+    msg:
+      - "Размер диска: {{ disk_size.stdout }}"
+      - "Размер раздела: {{ current_part_size.stdout }}"
+  tags:
+    - expand
+
+- name: Check if partition needs expansion
+  ansible.builtin.set_fact:
+    partition_needs_expand: "{{ current_part_size.stdout.strip() != disk_size.stdout.strip() }}"
+  tags:
+    - expand
+
+- name: Display expansion status
+  ansible.builtin.debug:
+    msg: "{{ 'Расширение требуется' if partition_needs_expand | bool else 'Раздел уже использует весь диск' }}"
+  tags:
+    - expand
+
+- name: Get partition number
+  ansible.builtin.set_fact:
+    partition_number: "{{ ssd_partition | regex_replace('^[a-z]+', '') | regex_replace('^n[0-9]+p', '') }}"
+  tags:
+    - expand
+
+- name: Display partition number
+  ansible.builtin.debug:
+    msg: "Номер раздела: {{ partition_number }}"
+  tags:
+    - expand
+
+- name: Expand partition to fill disk
+  ansible.builtin.command: "growpart /dev/{{ ssd_device }} {{ partition_number }}"
+  become: true
+  when:
+    - growpart_check.rc == 0
+    - partition_needs_expand | bool
+  register: growpart_result
+  failed_when: 
+    - growpart_result.rc != 0
+    - "'NOCHANGE' not in growpart_result.stdout | default('')"
+  tags:
+    - expand
+
+- name: Display growpart result
+  ansible.builtin.debug:
+    msg: "{{ growpart_result.stdout if (growpart_result is defined and growpart_result.rc == 0) else 'Раздел уже использует весь диск или не требуется расширение' }}"
+  when:
+    - growpart_check.rc == 0
+    - partition_needs_expand | bool
+  tags:
+    - expand
+
+- name: Resize filesystem (online resize supported for ext4)
+  ansible.builtin.command: "resize2fs /dev/{{ ssd_partition }}"
+  become: true
+  when:
+    - growpart_check.rc == 0
+    - partition_needs_expand | bool
+    - growpart_result is not skipped
+    - growpart_result.rc == 0 or 'CHANGED' in growpart_result.stdout | default('')
+    - ssd_filesystem == 'ext4'
+  register: resize_result
+  tags:
+    - expand
+
+- name: Display resize result
+  ansible.builtin.debug:
+    msg: "Файловая система расширена: {{ resize_result.stdout_lines[-1] if (resize_result is not skipped and resize_result.rc == 0) else 'Расширение не требуется или выполнено ранее' }}"
+  when:
+    - growpart_check.rc == 0
+    - partition_needs_expand | bool
+    - ssd_filesystem == 'ext4'
+  tags:
+    - expand
+
+- name: Get new partition size
+  ansible.builtin.shell: "lsblk /dev/{{ ssd_partition }} -o SIZE -n -d"
+  changed_when: false
+  register: new_part_size
+  when:
+    - growpart_check.rc == 0
+    - partition_needs_expand | bool
+  tags:
+    - expand
+
+- name: Display new size
+  ansible.builtin.debug:
+    msg:
+      - "Было: {{ current_part_size.stdout }}"
+      - "Стало: {{ new_part_size.stdout | default('без изменений') }}"
+  when:
+    - growpart_check.rc == 0
+    - partition_needs_expand | bool
+  tags:
+    - expand

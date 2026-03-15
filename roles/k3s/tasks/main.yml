@@ -1,0 +1,46 @@
+---
+- name: Include check tasks
+  ansible.builtin.include_tasks: check.yml
+  tags:
+    - k3s
+    - k3s-check
+
+- name: Skip if already installed and running
+  ansible.builtin.debug:
+    msg: "k3s {{ k3s_role | default('server') }} already installed and running on {{ inventory_hostname }}"
+  when:
+    - k3s_installed | default(false)
+    - k3s_service_running | default(false)
+  tags:
+    - k3s
+
+- name: Include prerequisites tasks
+  ansible.builtin.include_tasks: prerequisites.yml
+  when: not (k3s_installed | default(false)) or k3s_force_install | default(false)
+  tags:
+    - k3s
+    - k3s-prereq
+
+- name: Include server install tasks
+  ansible.builtin.include_tasks: install_server.yml
+  when:
+    - k3s_role == 'server'
+    - not (k3s_installed | default(false)) or k3s_force_install | default(false)
+  tags:
+    - k3s
+    - k3s-server
+
+- name: Include agent install tasks
+  ansible.builtin.include_tasks: install_agent.yml
+  when:
+    - k3s_role == 'agent'
+    - not (k3s_installed | default(false)) or k3s_force_install | default(false)
+  tags:
+    - k3s
+    - k3s-agent
+
+- name: Include verify tasks
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - k3s
+    - k3s-verify

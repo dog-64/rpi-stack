@@ -1,0 +1,30 @@
+---
+# Mount SSD partition
+
+- name: Create mount point directory
+  ansible.builtin.file:
+    path: "{{ ssd_mount_point }}"
+    state: directory
+    mode: '0755'
+  become: true
+  tags:
+    - mount
+
+- name: Mount SSD partition
+  ansible.builtin.mount:
+    path: "{{ ssd_mount_point }}"
+    src: "/dev/{{ ssd_partition }}"
+    fstype: "{{ ssd_filesystem }}"
+    opts: "{{ ssd_mount_options }}"
+    state: mounted
+  become: true
+  tags:
+    - mount
+
+- name: Verify SSD is mounted
+  ansible.builtin.stat:
+    path: "{{ ssd_mount_point }}"
+  register: mount_stat
+  failed_when: not mount_stat.stat.exists
+  tags:
+    - mount

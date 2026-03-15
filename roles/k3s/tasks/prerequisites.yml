@@ -1,0 +1,274 @@
+---
+- name: Load overlay kernel module
+  ansible.builtin.modprobe:
+    name: overlay
+    state: present
+  become: true
+
+- name: Load br_netfilter kernel module (may be built into bridge on newer kernels)
+  ansible.builtin.modprobe:
+    name: br_netfilter
+    state: present
+  become: true
+  ignore_errors: true
+  register: br_netfilter_result
+
+- name: Load bridge module as fallback if br_netfilter not available
+  ansible.builtin.modprobe:
+    name: bridge
+    state: present
+  become: true
+  when: br_netfilter_result is failed
+
+- name: Enable ip_forward
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    reload: true
+  become: true
+
+- name: Check if bridge-nf-call-iptables sysctl exists
+  ansible.builtin.stat:
+    path: /proc/sys/net/bridge/bridge-nf-call-iptables
+  register: bridge_nf_stat
+  become: true
+
+- name: Configure bridge sysctl for Kubernetes (only if available)
+  ansible.builtin.sysctl:
+    name: "{{ item }}"
+    value: '1'
+    state: present
+    reload: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+  become: true
+  when: bridge_nf_stat.stat.exists
+
+- name: Check cgroups configuration
+  ansible.builtin.shell: cat /proc/cgroups | grep -E 'memory|cpu' | awk '{print $4}'
+  register: cgroups_check
+  changed_when: false
+
+- name: Check if cgroup_memory is enabled
+  ansible.builtin.set_fact:
+    cgroup_memory_enabled: "'1' in cgroups_check.stdout"
+
+- name: Check cmdline.txt location (Ubuntu vs Raspberry Pi OS)
+  ansible.builtin.stat:
+    path: /boot/firmware/cmdline.txt
+  register: cmdline_ubuntu
+  when: not cgroup_memory_enabled
+
+- name: Check cmdline.txt location (Raspberry Pi OS)
+  ansible.builtin.stat:
+    path: /boot/cmdline.txt
+  register: cmdline_rpi
+  when: 
+    - not cgroup_memory_enabled
+    - not cmdline_ubuntu.stat.exists
+
+- name: Set cmdline.txt path
+  ansible.builtin.set_fact:
+    cmdline_path: "{{ '/boot/firmware/cmdline.txt' if cmdline_ubuntu.stat.exists else '/boot/cmdline.txt' }}"
+  when: not cgroup_memory_enabled
+
+- name: Check current cmdline.txt for problematic cgroup settings
+  ansible.builtin.shell: grep -E 'cgroup_disable=memory|cgroup_enable=memory|cgroup_memory=1' {{ cmdline_path }} || echo "NOT_FOUND"
+  register: cmdline_cgroup_check
+  changed_when: false
+  when: not cgroup_memory_enabled
+
+- name: Check if this is Ubuntu 25.10 or later (has cgroup v2 by default)
+  ansible.builtin.set_fact:
+    is_modern_ubuntu: true
+  when:
+    - not cgroup_memory_enabled
+    - ansible_distribution == 'Ubuntu'
+    - ansible_distribution_version is version('25.10', '>=')
+
+- name: Remove cgroup_disable=memory from cmdline.txt (blocks k3s!)
+  ansible.builtin.shell: |
+    sed -i 's/cgroup_disable=memory //g' {{ cmdline_path }}
+  become: true
+  register: cmdline_disable_removed
+  changed_when: cmdline_disable_removed.rc == 0
+  when:
+    - not cgroup_memory_enabled
+    - "'cgroup_disable=memory' in cmdline_cgroup_check.stdout"
+
+- name: Add cgroup_enable=memory via flash-kernel (Ubuntu 25.10+)
+  ansible.builtin.lineinfile:
+    path: /etc/default/flash-kernel
+    regexp: '^LINUX_KERNEL_CMDLINE_DEFAULTS='
+    line: 'LINUX_KERNEL_CMDLINE_DEFAULTS="cgroup_enable=memory"'
+    create: true
+  become: true
+  register: flash_kernel_modified
+  when:
+    - not cgroup_memory_enabled
+    - is_modern_ubuntu | default(false)
+    - "'cgroup_enable=memory' not in cmdline_cgroup_check.stdout"
+
+- name: Run flash-kernel to apply cgroup settings (Ubuntu 25.10+)
+  ansible.builtin.command: dpkg-reconfigure -p critical flash-kernel
+  become: true
+  register: flash_kernel_run
+  changed_when: flash_kernel_run.rc == 0
+  when:
+    - not cgroup_memory_enabled
+    - flash_kernel_modified is defined
+    - flash_kernel_modified.changed
+  notify: reboot for cgroup changes
+
+- name: Add cgroup settings to cmdline.txt (legacy systems)
+  ansible.builtin.lineinfile:
+    path: "{{ cmdline_path }}"
+    backrefs: true
+    regexp: '^(.*)$'
+    line: '\1 cgroup_memory=1 cgroup_enable=memory'
+  become: true
+  register: cmdline_modified
+  when:
+    - not cgroup_memory_enabled
+    - not (is_modern_ubuntu | default(false))
+    - "'cgroup_enable=memory' not in cmdline_cgroup_check.stdout"
+  notify: reboot for cgroup changes
+
+- name: Reboot required for cgroup changes
+  ansible.builtin.debug:
+    msg: |
+      cgroup configuration has been updated. System needs reboot.
+      Ubuntu 25.10+: flash-kernel was used to configure cgroups properly.
+      Legacy systems: cgroup_memory=1 cgroup_enable=memory added to cmdline.txt.
+  when:
+    - (cmdline_modified is defined and cmdline_modified.changed) or
+      (flash_kernel_modified is defined and flash_kernel_modified.changed)
+    - k3s_auto_reboot_cgroups | bool
+
+- name: Reboot for cgroup changes
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    connect_timeout: 10
+    test_command: whoami
+  become: true
+  when:
+    - (cmdline_modified is defined and cmdline_modified.changed) or
+      (flash_kernel_modified is defined and flash_kernel_modified.changed)
+    - k3s_auto_reboot_cgroups | bool
+
+- name: Fail if reboot needed for cgroups (auto-reboot disabled)
+  ansible.builtin.fail:
+    msg: |
+      cgroup configuration has been updated. Please reboot the system and run this playbook again.
+      Ubuntu 25.10+: flash-kernel configuration applied.
+      Legacy systems: cmdline.txt updated with cgroup parameters.
+      To auto-reboot, set k3s_auto_reboot_cgroups=true
+  when:
+    - (cmdline_modified is defined and cmdline_modified.changed) or
+      (flash_kernel_modified is defined and flash_kernel_modified.changed)
+    - not (k3s_auto_reboot_cgroups | bool)
+
+- name: Install required packages (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - curl
+      - iptables
+    state: present
+  become: true
+  when: ansible_os_family == 'Debian'
+
+- name: Check available NTP services
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: ntp_services
+  loop:
+    - /usr/lib/systemd/systemd-timesyncd
+    - /usr/lib/systemd/system/chrony.service
+
+- name: Get detected NTP service
+  ansible.builtin.set_fact:
+    ntp_service: ""
+    ntp_name: ""
+  when: ntp_services.results[0].stat.exists and ntp_services.results[1].stat.exists
+
+- name: Use systemd-timesyncd if only it exists
+  ansible.builtin.set_fact:
+    ntp_service: systemd-timesyncd
+    ntp_name: systemd-timesyncd
+  when: ntp_services.results[0].stat.exists and not ntp_services.results[1].stat.exists
+
+- name: Use chrony if only it exists
+  ansible.builtin.set_fact:
+    ntp_service: chrony
+    ntp_name: chrony
+  when: ntp_services.results[1].stat.exists and not ntp_services.results[0].stat.exists
+
+- name: Default to chrony if both exist
+  ansible.builtin.set_fact:
+    ntp_service: chrony
+    ntp_name: chrony
+  when: ntp_services.results[1].stat.exists
+
+- name: Enable and run NTP service
+  ansible.builtin.systemd:
+    name: "{{ ntp_service }}"
+    state: started
+    enabled: true
+  become: true
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_service is defined
+
+- name: Force time sync
+  ansible.builtin.command: timedatectl set-ntp true
+  become: true
+  register: time_sync_result
+  changed_when: false
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_service is defined
+
+- name: Wait for time synchronization
+  ansible.builtin.shell: |
+    timeout={{ k3s_time_sync_timeout }}
+    elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+      if timedatectl status | grep -q "System clock synchronized: yes"; then
+        echo "Time synchronized: $(timedatectl status | grep 'Local time')"
+        exit 0
+      fi
+      sleep 2
+      elapsed=$((elapsed + 2))
+    done
+    timedatectl status
+    exit 1
+  register: time_sync_wait
+  retries: 2
+  delay: 5
+  until: time_sync_wait.rc == 0
+  become: true
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_service is defined
+  ignore_errors: true
+
+- name: Show NTP service status
+  ansible.builtin.debug:
+    msg: |
+      NTP Service: {{ ntp_service | default('None detected') }}
+      Status: {{ ntp_services.results | map(attribute='stat.exists') | list }}
+  when:
+    - k3s_ensure_time_sync | bool
+    - ntp_services.results is defined
+
+- name: Warn if time not synchronized
+  ansible.builtin.debug:
+    msg: |
+      WARNING: System time is not synchronized! This may cause TLS certificate
+      validation errors in k3s. Check NTP connectivity and systemd-timesyncd status.
+  when:
+    - k3s_ensure_time_sync | bool
+    - time_sync_wait is defined
+    - time_sync_wait.rc != 0

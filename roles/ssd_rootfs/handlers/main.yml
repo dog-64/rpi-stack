@@ -1,0 +1,9 @@
+---
+# handlers file for ssd_rootfs
+
+- name: Reboot to boot from SSD
+  ansible.builtin.shell: sleep {{ ssd_reboot_delay | default(5) }} && reboot
+  async: 1
+  poll: 0
+  become: true
+  listen: "reboot system"

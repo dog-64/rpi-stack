@@ -1,0 +1,45 @@
+---
+# defaults file for ssd_rootfs
+
+# Target OS: rpi_os or ubuntu
+ssd_target_os: ubuntu
+
+# SSD device (auto-detect if not specified)
+ssd_device: auto
+
+# SSD partition to use as rootfs
+ssd_partition: auto
+
+# Mount point for SSD operations
+ssd_mount_point: /mnt/ssd
+
+# Boot partition mount point on microSD
+# Raspberry Pi OS uses /boot, Ubuntu uses /boot/firmware
+boot_mount_point: "{{ 'firmware' if ssd_target_os == 'ubuntu' else '/boot' }}"
+
+# Boot partition full path
+boot_mount_full_path: "{{ '/boot/firmware' if ssd_target_os == 'ubuntu' else '/boot' }}"
+
+# Filesystem type
+ssd_filesystem: ext4
+
+# Mount options for rootfs
+ssd_mount_options: defaults,noatime
+
+# Skip confirmation prompts (for automation)
+ssd_skip_confirmation: false
+
+# Minimum free space ratio (SSD size / current usage)
+ssd_min_free_space_ratio: 1.1
+
+# Enable reboot after configuration
+ssd_reboot_after_config: true
+
+# Reboot delay in seconds
+ssd_reboot_delay: 5
+
+# Ubuntu specific: Label names for root and boot partitions
+# NOTE: Ubuntu uses PARTUUID in fstab (not LABEL) for deterministic behaviour
+# Labels are still used by initramfs for emergency boot
+ubuntu_root_label: writable
+ubuntu_boot_label: system-boot

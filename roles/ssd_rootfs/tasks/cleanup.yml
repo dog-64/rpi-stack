@@ -1,0 +1,61 @@
+---
+# Cleanup and finalization
+
+# Проверка и исправление файловой системы microSD (для предотвращения повреждений при извлечении)
+- name: Check if system is booting from microSD
+  ansible.builtin.shell: df / | tail -1 | awk '{print $1}'
+  register: current_root_device
+  changed_when: false
+  tags:
+    - cleanup
+
+- name: Check if microSD rootfs is mounted
+  ansible.builtin.shell: "mount | grep '/dev/mmcblk0p2' || echo 'NOT_MOUNTED'"
+  register: sd_mount_status
+  changed_when: false
+  tags:
+    - cleanup
+
+- name: Check and repair microSD filesystem if NOT mounted
+  ansible.builtin.shell: "fsck -y /dev/mmcblk0p2"
+  become: true
+  when:
+    - sd_mount_status.stdout == 'NOT_MOUNTED'
+  tags:
+    - cleanup
+
+- name: Unmount SSD partition
+  ansible.builtin.mount:
+    path: "{{ ssd_mount_point }}"
+    src: "/dev/{{ ssd_partition }}"
+    fstype: "{{ ssd_filesystem }}"
+    state: unmounted
+  become: true
+  tags:
+    - cleanup
+
+- name: Remove mount point directory
+  ansible.builtin.file:
+    path: "{{ ssd_mount_point }}"
+    state: absent
+  become: true
+  when:
+    - ssd_mount_point != '/mnt'  # Safety check
+  tags:
+    - cleanup
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg:
+      - "══════════════════════════════════════════════════════════"
+      - "  Конфигурация завершена!"
+      - "  SSD: /dev/{{ ssd_partition }}"
+      - "  UUID: {{ ssd_uuid | default('не определён') }}"
+      - ""
+      - "  Следующие шаги:"
+      - "  1. Перезагрузите систему"
+      - "  2. После перезагрузки проверьте: df -h /"
+      - "  3. Должно показывать: /dev/{{ ssd_partition }}"
+      - "══════════════════════════════════════════════════════════"
+  tags:
+    - cleanup
