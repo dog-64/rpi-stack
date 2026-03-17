@@ -66,7 +66,7 @@ uptime: ## Показать uptime всех хостов
 	@ansible active -a "uptime" | grep -v ">>>" | sed 's/.*| CHANGED.*//'
 
 temp: ## Показать температуру CPU
-	@ansible active -a "vcgencmd measure_temp" | grep -v ">>>" | sed 's/.*| CHANGED.*//'
+	@ansible active -m shell -a "echo \$$(hostname -I | awk '{print \$$1}') \$$(vcgencmd measure_temp)" | awk '/\| (CHANGED|SUCCESS)/{node=$$1} /^[0-9]/{print node" ("$$1"): temp="$$2}'
 
 memory: ## Показать использование памяти
 	@ansible active -a "free -h" | grep -v ">>>"
@@ -118,7 +118,7 @@ i: info ## Быстрая информация (алиас для info)
 
 # Мониторинг
 watch-temp: ## Мониторинг температуры каждые 5 секунд
-	@watch -n 5 "ansible active -a 'vcgencmd measure_temp' 2>/dev/null | grep temp"
+	@watch -n 5 "ansible active -a 'vcgencmd measure_temp' 2>/dev/null | awk '/\\| (CHANGED|SUCCESS)/{node=\$1} /^temp=/{print node\": \"\$0}'"
 
 watch-memory: ## Мониторинг памяти каждые 5 секунд
 	@watch -n 5 "ansible active -a 'free -h' 2>/dev/null | grep -E '(leha|sema|motya|osya|Mem:)'"
