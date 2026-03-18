@@ -15,23 +15,23 @@
 
 ## Ключевые решения
 
-| Вопрос | Решение | Почему |
-|--------|---------|--------|
-| Скрейпер | Prometheus | Классический, хорошо задокументирован, remote_write в Mimir |
-| Деплой | Raw K8s манифесты через Ansible | Нет Helm в проекте, проще для этого набора компонентов |
-| Хранение | PVC через `local-path` (встроен в K3S) | Уже есть, данные на SSD |
-| Namespace | `monitoring` | Изоляция от системных компонентов |
-| Mimir режим | Monolithic (один процесс) | Для 4 нод microservices-режим — overkill |
-| Grafana доступ | NodePort `:30300` | Простой доступ из LAN: `http://10.0.1.33:30300` |
+| Вопрос         | Решение                                | Почему                                                      |
+|----------------|----------------------------------------|-------------------------------------------------------------|
+| Скрейпер       | Prometheus                             | Классический, хорошо задокументирован, remote_write в Mimir |
+| Деплой         | Raw K8s манифесты через Ansible        | Нет Helm в проекте, проще для этого набора компонентов      |
+| Хранение       | PVC через `local-path` (встроен в K3S) | Уже есть, данные на SSD                                     |
+| Namespace      | `monitoring`                           | Изоляция от системных компонентов                           |
+| Mimir режим    | Monolithic (один процесс)              | Для 4 нод microservices-режим — overkill                    |
+| Grafana доступ | NodePort `:30300`                      | Простой доступ из LAN: `http://10.0.1.33:30300`             |
 
 ## Лимиты ресурсов
 
-| Компонент | Реплики | RAM request/limit | CPU request/limit |
-|-----------|---------|-------------------|-------------------|
-| Node Exporter | ×4 (DaemonSet) | 64Mi / 128Mi | 50m / 100m |
-| Prometheus | ×1 | 128Mi / 512Mi | 100m / 300m |
-| Mimir | ×1 | 256Mi / 512Mi | 100m / 500m |
-| Grafana | ×1 | 128Mi / 256Mi | 100m / 250m |
+| Компонент     | Реплики        | RAM request/limit | CPU request/limit |
+|---------------|----------------|-------------------|-------------------|
+| Node Exporter | ×4 (DaemonSet) | 64Mi / 128Mi      | 50m / 100m        |
+| Prometheus    | ×1             | 128Mi / 512Mi     | 100m / 300m       |
+| Mimir         | ×1             | 256Mi / 512Mi     | 100m / 500m       |
+| Grafana       | ×1             | 128Mi / 256Mi     | 100m / 250m       |
 
 ## Структура файлов
 
@@ -68,7 +68,8 @@ Makefile                           # + секция monitoring-*
 3. **node_exporter** — DaemonSet с `hostNetwork: true`, `hostPID: true`, порт 9100
 4. **mimir** — ConfigMap + PVC 10Gi + Deployment (nodeSelector: sema) + ClusterIP :9009
 5. **prometheus** — ConfigMap (scrape node-exporter, remote_write → mimir:9009) + Deployment + ClusterIP :9090
-6. **grafana** — ConfigMap datasource (Mimir как Prometheus-type) + PVC 5Gi + Deployment (nodeSelector: sema) + NodePort :30300
+6. **grafana** — ConfigMap datasource (Mimir как Prometheus-type) + PVC 5Gi + Deployment (nodeSelector: sema) +
+   NodePort :30300
 7. **verify** — ожидание всех подов Ready, curl /ready и /api/health
 
 ## Makefile targets

@@ -1,4 +1,4 @@
-.PHONY: help ping info update setup list graph shell reboot check clean locale todo k3s-install k3s-server k3s-agents k3s-status k3s-uninstall k3s-verify
+.PHONY: help ping info update setup list graph shell reboot check clean locale todo k3s-install k3s-server k3s-agents k3s-status k3s-uninstall k3s-verify monitoring-install monitoring-status monitoring-uninstall monitoring-open
 
 # Подавление предупреждений Python
 export PYTHONWARNINGS=ignore::DeprecationWarning
@@ -174,3 +174,23 @@ k3s-kubeconfig: ## Показать kubeconfig для удалённого до�
 
 k3s-shell: ## kubectl shell на server
 	@ssh $$(ansible-inventory --host sema | grep ansible_host | cut -d'"' -f4) -t "sudo k3s kubectl get nodes -o wide; exec bash"
+
+# =====================================
+# Мониторинг (Grafana + Mimir + Prometheus + Node Exporter)
+# =====================================
+
+monitoring-install: ## Установить стек мониторинга
+	@echo "$(GREEN)Установка мониторинга...$(NC)"
+	ansible-playbook playbooks/monitoring-install.yml
+
+monitoring-status: ## Статус подов мониторинга
+	@echo "$(GREEN)Статус мониторинга:$(NC)"
+	@ansible k3s_server -b -a "k3s kubectl get pods -n monitoring -o wide" 2>/dev/null || echo "Мониторинг не установлен"
+
+monitoring-uninstall: ## Удалить стек мониторинга (требует подтверждения)
+	@echo "$(YELLOW)⚠️  Это удалит namespace monitoring со всеми данными!$(NC)"
+	@read -p "Продолжить? [y/N]: " confirm && [ "$$confirm" = "y" ] && \
+		ansible k3s_server -b -a "k3s kubectl delete namespace monitoring --ignore-not-found" || echo "Отменено"
+
+monitoring-open: ## Открыть Grafana в браузере
+	open http://10.0.1.33:30300
