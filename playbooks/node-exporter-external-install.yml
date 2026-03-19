@@ -1,0 +1,15 @@
+---
+- name: Установка Node Exporter на внешние хосты
+  hosts: external_monitoring
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Отображение информации о хосте
+      ansible.builtin.debug:
+        msg: "Установка Node Exporter на: {{ inventory_hostname }} ({{ ansible_host }})"
+
+  roles:
+    - role: node_exporter_standalone
+      tags:
+        - node-exporter

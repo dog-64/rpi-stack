@@ -1,4 +1,4 @@
-.PHONY: help ping info update setup list graph shell reboot check clean locale todo k3s-install k3s-server k3s-agents k3s-status k3s-uninstall k3s-verify monitoring-install monitoring-status monitoring-uninstall monitoring-open
+.PHONY: help ping info update setup list graph shell reboot check clean locale todo k3s-install k3s-server k3s-agents k3s-status k3s-uninstall k3s-verify monitoring-install monitoring-status monitoring-uninstall monitoring-open node-exporter-external-install node-exporter-external-check
 
 # Подавление предупреждений Python
 export PYTHONWARNINGS=ignore::DeprecationWarning
@@ -194,3 +194,11 @@ monitoring-uninstall: ## Удалить стек мониторинга (тре�
 
 monitoring-open: ## Открыть Grafana в браузере
 	open http://10.0.1.33:30300
+
+node-exporter-external-install: ## Установить Node Exporter на внешние хосты
+	@echo "$(GREEN)Установка Node Exporter на внешние хосты...$(NC)"
+	ansible-playbook playbooks/node-exporter-external-install.yml
+
+node-exporter-external-check: ## Проверить Node Exporter на внешних хостах
+	@echo "$(GREEN)Проверка Node Exporter...$(NC)"
+	@ansible external_monitoring -m shell -a "curl -s http://localhost:9100/metrics | head -5" || echo "Нет внешних хостов для мониторинга"

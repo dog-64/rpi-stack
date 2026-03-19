@@ -88,7 +88,15 @@ all:
     k3s_cluster:
       children:
         k3s_server:
-        k3s_agent:
+        k3s_agent
+
+    # Внешние хосты для мониторинга (не в k3s кластере)
+    external_monitoring:
+      hosts:
+        # nas:
+        #   ansible_host: 10.0.1.200
+        # backup:
+        #   ansible_host: 10.0.1.201:
 
   vars:
     ansible_user: dog
