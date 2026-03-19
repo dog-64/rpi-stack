@@ -1,0 +1,22 @@
+---
+- name: Создать ConfigMap Mimir
+  ansible.builtin.template:
+    src: mimir-config.yml.j2
+    dest: /tmp/monitoring-mimir-config.yml
+    mode: '0644'
+
+- name: Применить ConfigMap Mimir
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-mimir-config.yml
+  changed_when: true
+
+- name: Создать манифест Mimir (PVC + Deployment + Service)
+  ansible.builtin.template:
+    src: mimir.yml.j2
+    dest: /tmp/monitoring-mimir.yml
+    mode: '0644'
+
+- name: Применить Mimir
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-mimir.yml
+  changed_when: true

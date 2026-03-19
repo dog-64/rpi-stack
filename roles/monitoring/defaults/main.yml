@@ -1,0 +1,46 @@
+---
+# Версии образов
+monitoring_node_exporter_image: "quay.io/prometheus/node-exporter:v1.8.2"
+monitoring_prometheus_image: "prom/prometheus:v2.54.1"
+monitoring_mimir_image: "grafana/mimir:2.13.0"
+monitoring_grafana_image: "grafana/grafana:11.2.0"
+
+# Namespace
+monitoring_namespace: monitoring
+
+# Порты
+monitoring_node_exporter_port: 9100
+monitoring_prometheus_port: 9090
+monitoring_mimir_port: 9009
+monitoring_grafana_nodeport: 30300
+
+# Сервер (sema) — нода для Mimir и Grafana
+monitoring_server_hostname: "sema"
+
+# Хранилище
+monitoring_mimir_storage: "10Gi"
+monitoring_grafana_storage: "5Gi"
+
+# Лимиты — Node Exporter
+monitoring_node_exporter_mem_request: "64Mi"
+monitoring_node_exporter_mem_limit: "128Mi"
+monitoring_node_exporter_cpu_request: "50m"
+monitoring_node_exporter_cpu_limit: "100m"
+
+# Лимиты — Prometheus
+monitoring_prometheus_mem_request: "128Mi"
+monitoring_prometheus_mem_limit: "512Mi"
+monitoring_prometheus_cpu_request: "100m"
+monitoring_prometheus_cpu_limit: "300m"
+
+# Лимиты — Mimir
+monitoring_mimir_mem_request: "256Mi"
+monitoring_mimir_mem_limit: "512Mi"
+monitoring_mimir_cpu_request: "100m"
+monitoring_mimir_cpu_limit: "500m"
+
+# Лимиты — Grafana
+monitoring_grafana_mem_request: "128Mi"
+monitoring_grafana_mem_limit: "256Mi"
+monitoring_grafana_cpu_request: "100m"
+monitoring_grafana_cpu_limit: "250m"

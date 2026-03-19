@@ -1,0 +1,28 @@
+---
+- name: Установка мониторинга (Grafana + Mimir + Prometheus + Node Exporter)
+  hosts: k3s_server
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Информация о деплое
+      ansible.builtin.debug:
+        msg:
+          - "Деплой мониторинга на: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Grafana будет доступна на: http://{{ ansible_host }}:30300"
+
+  roles:
+    - role: monitoring
+      tags:
+        - monitoring
+
+  post_tasks:
+    - name: Итог установки
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "Мониторинг установлен!"
+          - "Grafana: http://{{ ansible_host }}:30300"
+          - "Логин: admin / Пароль: admin"
+          - "Дашборд Node Exporter Full: импортируй ID 1860"
+          - "=========================================="

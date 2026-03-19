@@ -1,0 +1,35 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: {{ monitoring_namespace }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    remote_write:
+      - url: http://mimir:{{ monitoring_mimir_port }}/api/v1/push
+        queue_config:
+          max_samples_per_send: 1000
+          max_shards: 200
+          capacity: 2500
+
+    scrape_configs:
+      - job_name: "node-exporter"
+        static_configs:
+          - targets:
+{% for host in groups['k3s_cluster'] %}
+              - "{{ hostvars[host]['ansible_host'] }}:{{ monitoring_node_exporter_port }}"
+{% endfor %}
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: "([^:]+):.*"
+            target_label: instance
+            replacement: "$1"
+
+      - job_name: "prometheus"
+        static_configs:
+          - targets: ["localhost:{{ monitoring_prometheus_port }}"]

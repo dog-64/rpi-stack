@@ -1,0 +1,64 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: {{ monitoring_namespace }}
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: {{ monitoring_prometheus_image }}
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.retention.time=2h"
+            - "--web.enable-remote-write-receiver"
+          ports:
+            - containerPort: {{ monitoring_prometheus_port }}
+              name: http
+          resources:
+            requests:
+              memory: "{{ monitoring_prometheus_mem_request }}"
+              cpu: "{{ monitoring_prometheus_cpu_request }}"
+            limits:
+              memory: "{{ monitoring_prometheus_mem_limit }}"
+              cpu: "{{ monitoring_prometheus_cpu_limit }}"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: {{ monitoring_prometheus_port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: {{ monitoring_namespace }}
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: {{ monitoring_prometheus_port }}
+      targetPort: {{ monitoring_prometheus_port }}

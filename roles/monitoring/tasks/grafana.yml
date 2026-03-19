@@ -1,0 +1,44 @@
+---
+- name: Создать ConfigMap Grafana datasource
+  ansible.builtin.template:
+    src: grafana-datasource.yml.j2
+    dest: /tmp/monitoring-grafana-datasource.yml
+    mode: '0644'
+
+- name: Применить ConfigMap Grafana datasource
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-grafana-datasource.yml
+  changed_when: true
+
+- name: Создать ConfigMap provisioning дашбордов
+  ansible.builtin.template:
+    src: grafana-dashboard-provisioning.yml.j2
+    dest: /tmp/monitoring-grafana-dashboard-prov.yml
+    mode: '0644'
+
+- name: Применить ConfigMap provisioning дашбордов
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-grafana-dashboard-prov.yml
+  changed_when: true
+
+- name: Создать ConfigMap с дашбордом Node Exporter
+  ansible.builtin.template:
+    src: grafana-dashboard.yml.j2
+    dest: /tmp/monitoring-grafana-dashboard.yml
+    mode: '0644'
+
+- name: Применить ConfigMap с дашбордом
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-grafana-dashboard.yml
+  changed_when: true
+
+- name: Создать манифест Grafana (PVC + Deployment + Service)
+  ansible.builtin.template:
+    src: grafana.yml.j2
+    dest: /tmp/monitoring-grafana.yml
+    mode: '0644'
+
+- name: Применить Grafana
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-grafana.yml
+  changed_when: true

@@ -1,0 +1,11 @@
+---
+- name: Создать namespace monitoring
+  ansible.builtin.template:
+    src: namespace.yml.j2
+    dest: /tmp/monitoring-namespace.yml
+    mode: '0644'
+
+- name: Применить namespace
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-namespace.yml
+  changed_when: true
