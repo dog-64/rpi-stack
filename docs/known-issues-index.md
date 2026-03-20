@@ -6,6 +6,12 @@
 
 ### 🐛 Kubernetes / k3s
 
+#### [k3s-node-troubleshooting.md](k3s-node-troubleshooting.md)
+**Дата:** 2026-03-20
+**Статус:** 📖 Инструкция
+**Проблема:** Нода k3s в статусе NotReady
+**Решение:** Пошаговая диагностика: describe node → проверка SSH → статус сервиса → логи → очистка credentials → переустановка
+
 #### [k3s-node-time-sync-problem.md](k3s-node-time-sync-problem.md)
 **Дата:** 2026-03-14
 **Статус:** ✅ Решено
@@ -103,6 +109,7 @@
 
 ## Список всех документов
 
+- [k3s-node-troubleshooting.md](k3s-node-troubleshooting.md) - Диагностика и исправление NotReady нод
 - [k3s-node-time-sync-problem.md](k3s-node-time-sync-problem.md) - Синхронизация времени в k3s
 - [ssd-migration-issues.md](ssd-migration-issues.md) - Проблемы после SSD миграции
 - [ssd-filesystem-corruption.md](ssd-filesystem-corruption.md) - Повреждение файловой системы SSD
