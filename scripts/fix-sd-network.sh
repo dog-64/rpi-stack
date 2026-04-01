@@ -234,7 +234,30 @@ else
     fi
 fi
 
-echo "[5/5] Проверка завершена"
+# Проверяем и добавляем usb_max_current_enable=1 в config.txt
+# RPi 5 при загрузке с USB требует подтверждения высокого тока (5V/5A)
+# Без этого параметра загрузка останавливается с предупреждением
+echo "[5/6] Проверяю config.txt на usb_max_current_enable..."
+CONFIG_FILE="$MOUNT_POINT/config.txt"
+
+if [ -f "$CONFIG_FILE" ]; then
+    if grep -q 'usb_max_current_enable=1' "$CONFIG_FILE"; then
+        echo "      OK: usb_max_current_enable=1 уже присутствует"
+    else
+        # Добавляем после первой строки [all] (в config.txt может быть несколько секций)
+        if grep -q '^\[all\]' "$CONFIG_FILE"; then
+            sed -i '0,/^\[all\]/{s/^\[all\]/[all]\nusb_max_current_enable=1/}' "$CONFIG_FILE"
+        else
+            echo "usb_max_current_enable=1" >> "$CONFIG_FILE"
+        fi
+        sync
+        echo "      Добавлен usb_max_current_enable=1 в config.txt"
+    fi
+else
+    echo "      ВНИМАНИЕ: config.txt не найден!"
+fi
+
+echo "[6/6] Проверка завершена"
 
 # Размонтировать
 echo ""
