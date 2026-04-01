@@ -202,18 +202,34 @@ else
         fi
     else
         echo "      OK: cmdline.txt содержит root="
-        # Проверяем что current/cmdline.txt тоже содержит cfg80211
+
+        # Проверяем и добавляем cgroup_enable=memory в ОБА cmdline.txt
+        # На Raspberry Pi cgroup_disable=memory может быть зашит в device-tree
+        # (не виден в cmdline.txt, но присутствует в /proc/device-tree/chosen/bootargs)
+        # Добавление cgroup_enable=memory в cmdline.txt перекрывает DT-запрет
+        CMDLINE_NEEDS_CGROUP=false
+        if ! grep -q 'cgroup_enable=memory' "$CMDLINE_FILE"; then
+            CMDLINE_NEEDS_CGROUP=true
+            # Удаляем cgroup_disable=memory если есть, добавляем cgroup_enable=memory
+            CMDLINE_CLEANED=$(cat "$CMDLINE_FILE" | sed 's/cgroup_disable=[^ ]* //g')
+            echo "$CMDLINE_CLEANED cgroup_enable=memory" > "$CMDLINE_FILE"
+            echo "      Добавлен cgroup_enable=memory в cmdline.txt"
+        fi
+
         if [ -f "$MOUNT_POINT/current/cmdline.txt" ]; then
             CURRENT_CONTENT=$(cat "$MOUNT_POINT/current/cmdline.txt")
-            if [[ ! "$CURRENT_CONTENT" =~ cfg80211.ieee80211_regdom ]]; then
-                echo "      ВНИМАНИЕ: current/cmdline.txt НЕ содержит cfg80211!"
-                echo "      Очищаю cmdline.txt от k3s-блокирующих параметров и копирую в current/..."
-                # Очищаем от проблемных параметров перед копированием
-                CMDLINE_CLEANED=$(cat "$CMDLINE_FILE" | sed 's/cgroup_disable=[^ ]* //g')
-                echo "$CMDLINE_CLEANED" > "$MOUNT_POINT/current/cmdline.txt"
-                sync
-                echo "      current/cmdline.txt обновлён и очищен!"
+            if ! grep -q 'cgroup_enable=memory' "$MOUNT_POINT/current/cmdline.txt"; then
+                CURRENT_CLEANED=$(echo "$CURRENT_CONTENT" | sed 's/cgroup_disable=[^ ]* //g')
+                echo "$CURRENT_CLEANED cgroup_enable=memory" > "$MOUNT_POINT/current/cmdline.txt"
+                echo "      Добавлен cgroup_enable=memory в current/cmdline.txt"
             fi
+        fi
+
+        if [ "$CMDLINE_NEEDS_CGROUP" = "true" ]; then
+            sync
+            echo "      cgroup_enable=memory добавлен в оба файла!"
+        else
+            echo "      OK: cgroup_enable=memory уже присутствует"
         fi
     fi
 fi
