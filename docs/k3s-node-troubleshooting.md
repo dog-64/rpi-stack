@@ -19,6 +19,7 @@ ssh sema 'kubectl describe node <имя-ноды>' | head -80
 ```
 
 **Искать в выводе:**
+
 - `Conditions` → `Ready: Unknown` = kubelet остановился
 - `Taints` → `node.kubernetes.io/unreachable` = нода недоступна
 - `LastHeartbeatTime` — когда нода последний раз отвечала
@@ -30,6 +31,7 @@ ssh <имя-ноды> 'hostname'
 ```
 
 **Если ошибка `REMOTE HOST IDENTIFICATION HAS CHANGED`:**
+
 ```bash
 ssh-keygen -R <имя-ноды>
 ssh-keygen -R <IP-ноды>
@@ -47,11 +49,11 @@ ssh <имя-ноды> 'sudo systemctl status k3s-agent --no-pager -l'
 
 **Возможные проблемы:**
 
-| Ошибка | Причина | Решение |
-|--------|---------|---------|
-| `Unit k3s-agent.service not found` | K3s не установлен | [Переустановка](#шаг-4-переустановка-k3s-agent) |
-| `Node password rejected` | Конфликт паролей | [Очистка credentials](#шаг-3-очистка-credentials) |
-| `connection refused` | Нет связи с server | Проверить сеть и server |
+| Ошибка                             | Причина            | Решение                                           |
+|------------------------------------|--------------------|---------------------------------------------------|
+| `Unit k3s-agent.service not found` | K3s не установлен  | [Переустановка](#шаг-4-переустановка-k3s-agent)   |
+| `Node password rejected`           | Конфликт паролей   | [Очистка credentials](#шаг-3-очистка-credentials) |
+| `connection refused`               | Нет связи с server | Проверить сеть и server                           |
 
 ### 2.2 Проверить логи
 

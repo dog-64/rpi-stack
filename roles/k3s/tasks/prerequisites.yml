@@ -46,14 +46,24 @@
   become: true
   when: bridge_nf_stat.stat.exists
 
-- name: Check cgroups configuration
-  ansible.builtin.shell: cat /proc/cgroups | grep -E 'memory|cpu' | awk '{print $4}'
-  register: cgroups_check
+- name: Check if memory cgroup is available
+  ansible.builtin.shell: |
+    # cgroup v2: check controllers file
+    if grep -qw memory /sys/fs/cgroup/cgroup.controllers 2>/dev/null; then
+      echo "enabled"
+    # cgroup v1: check /proc/cgroups for memory specifically
+    elif grep -q '^memory' /proc/cgroups 2>/dev/null; then
+      enabled=$(grep '^memory' /proc/cgroups | awk '{print $4}')
+      if [ "$enabled" = "1" ]; then echo "enabled"; else echo "disabled"; fi
+    else
+      echo "disabled"
+    fi
+  register: cgroups_memory_check
   changed_when: false
 
-- name: Check if cgroup_memory is enabled
+- name: Set cgroup memory enabled fact
   ansible.builtin.set_fact:
-    cgroup_memory_enabled: "'1' in cgroups_check.stdout"
+    cgroup_memory_enabled: "{{ cgroups_memory_check.stdout == 'enabled' }}"
 
 - name: Check cmdline.txt location (Ubuntu vs Raspberry Pi OS)
   ansible.builtin.stat:
