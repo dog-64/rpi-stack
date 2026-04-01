@@ -96,7 +96,7 @@ all:
         # nas:
         #   ansible_host: 10.0.1.200
         # backup:
-        #   ansible_host: 10.0.1.201:
+        #   ansible_host: 10.0.1.201
 
   vars:
     ansible_user: dog

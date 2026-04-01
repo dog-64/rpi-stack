@@ -1,0 +1,27 @@
+---
+- name: Проверить наличие namespace monitoring
+  ansible.builtin.command:
+    cmd: k3s kubectl get namespace {{ monitoring_namespace }}
+  register: monitoring_ns_check
+  failed_when: false
+  changed_when: false
+
+- name: Проверить поды мониторинга
+  ansible.builtin.command:
+    cmd: >
+      k3s kubectl get pods -n {{ monitoring_namespace }}
+      -l 'app in (node-exporter,prometheus,mimir,grafana)'
+      --field-selector=status.phase=Running
+      -o name
+  register: monitoring_pods_check
+  failed_when: false
+  changed_when: false
+  when: monitoring_ns_check.rc == 0
+
+- name: Установить факт — мониторинг уже установлен
+  ansible.builtin.set_fact:
+    monitoring_installed: >-
+      {{
+        monitoring_ns_check.rc == 0 and
+        (monitoring_pods_check.stdout_lines | default([]) | length) >= 4
+      }}

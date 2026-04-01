@@ -21,7 +21,12 @@
       "Bash(ssh-keygen:*)",
       "Bash(sleep 60:*)",
       "Bash(git add:*)",
-      "Bash(ansible osya:*)"
+      "Bash(ansible osya:*)",
+      "Bash(make monitoring-install:*)",
+      "Bash(ansible k3s_server -b -a \"k3s kubectl delete namespace monitoring --ignore-not-found\")",
+      "Bash(make monitoring-status:*)",
+      "Bash(open:*)",
+      "Bash(ansible:*)"
     ]
   }
 }

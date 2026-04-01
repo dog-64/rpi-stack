@@ -1,0 +1,22 @@
+---
+- name: Создать ConfigMap Prometheus
+  ansible.builtin.template:
+    src: prometheus-config.yml.j2
+    dest: /tmp/monitoring-prometheus-config.yml
+    mode: '0644'
+
+- name: Применить ConfigMap Prometheus
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-prometheus-config.yml
+  changed_when: true
+
+- name: Создать манифест Prometheus (Deployment + Service)
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /tmp/monitoring-prometheus.yml
+    mode: '0644'
+
+- name: Применить Prometheus
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-prometheus.yml
+  changed_when: true

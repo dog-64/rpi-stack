@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mimir-data
+  namespace: {{ monitoring_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: {{ monitoring_mimir_storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mimir
+  namespace: {{ monitoring_namespace }}
+  labels:
+    app: mimir
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mimir
+  template:
+    metadata:
+      labels:
+        app: mimir
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: {{ monitoring_server_hostname }}
+      containers:
+        - name: mimir
+          image: {{ monitoring_mimir_image }}
+          args:
+            - "-config.file=/etc/mimir/mimir.yaml"
+          ports:
+            - containerPort: {{ monitoring_mimir_port }}
+              name: http
+            - containerPort: 9095
+              name: grpc
+          resources:
+            requests:
+              memory: "{{ monitoring_mimir_mem_request }}"
+              cpu: "{{ monitoring_mimir_cpu_request }}"
+            limits:
+              memory: "{{ monitoring_mimir_mem_limit }}"
+              cpu: "{{ monitoring_mimir_cpu_limit }}"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mimir
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ monitoring_mimir_port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: mimir-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: mimir-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mimir
+  namespace: {{ monitoring_namespace }}
+  labels:
+    app: mimir
+spec:
+  type: ClusterIP
+  selector:
+    app: mimir
+  ports:
+    - name: http
+      port: {{ monitoring_mimir_port }}
+      targetPort: {{ monitoring_mimir_port }}

@@ -1,0 +1,54 @@
+---
+- name: Include check tasks
+  ansible.builtin.include_tasks: check.yml
+  tags:
+    - monitoring
+    - monitoring-check
+
+- name: Skip if already installed and running
+  ansible.builtin.debug:
+    msg: "Мониторинг уже установлен и работает"
+  when: monitoring_installed | default(false)
+  tags:
+    - monitoring
+
+- name: Include namespace tasks
+  ansible.builtin.include_tasks: namespace.yml
+  when: not (monitoring_installed | default(false)) or monitoring_force_install | default(false)
+  tags:
+    - monitoring
+    - monitoring-namespace
+
+- name: Include node_exporter tasks
+  ansible.builtin.include_tasks: node_exporter.yml
+  when: not (monitoring_installed | default(false)) or monitoring_force_install | default(false)
+  tags:
+    - monitoring
+    - monitoring-node-exporter
+
+- name: Include mimir tasks
+  ansible.builtin.include_tasks: mimir.yml
+  when: not (monitoring_installed | default(false)) or monitoring_force_install | default(false)
+  tags:
+    - monitoring
+    - monitoring-mimir
+
+- name: Include prometheus tasks
+  ansible.builtin.include_tasks: prometheus.yml
+  when: not (monitoring_installed | default(false)) or monitoring_force_install | default(false)
+  tags:
+    - monitoring
+    - monitoring-prometheus
+
+- name: Include grafana tasks
+  ansible.builtin.include_tasks: grafana.yml
+  when: not (monitoring_installed | default(false)) or monitoring_force_install | default(false)
+  tags:
+    - monitoring
+    - monitoring-grafana
+
+- name: Include verify tasks
+  ansible.builtin.include_tasks: verify.yml
+  tags:
+    - monitoring
+    - monitoring-verify

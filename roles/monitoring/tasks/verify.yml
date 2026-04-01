@@ -1,0 +1,60 @@
+---
+- name: Ожидать готовности Node Exporter (DaemonSet)
+  ansible.builtin.command:
+    cmd: >
+      k3s kubectl rollout status daemonset/node-exporter
+      -n {{ monitoring_namespace }} --timeout=120s
+  changed_when: false
+
+- name: Ожидать готовности Mimir
+  ansible.builtin.command:
+    cmd: >
+      k3s kubectl rollout status deployment/mimir
+      -n {{ monitoring_namespace }} --timeout=180s
+  changed_when: false
+
+- name: Ожидать готовности Prometheus
+  ansible.builtin.command:
+    cmd: >
+      k3s kubectl rollout status deployment/prometheus
+      -n {{ monitoring_namespace }} --timeout=120s
+  changed_when: false
+
+- name: Ожидать готовности Grafana
+  ansible.builtin.command:
+    cmd: >
+      k3s kubectl rollout status deployment/grafana
+      -n {{ monitoring_namespace }} --timeout=120s
+  changed_when: false
+
+- name: Проверить что все поды в статусе Running
+  ansible.builtin.shell:
+    cmd: >
+      k3s kubectl get pods -n {{ monitoring_namespace }}
+      -l 'app in (node-exporter,prometheus,mimir,grafana)'
+      --field-selector=status.phase!=Running
+      -o name
+  register: non_running_pods
+  changed_when: false
+  retries: 10
+  delay: 5
+  until: non_running_pods.stdout | length == 0
+
+- name: Показать все поды мониторинга
+  ansible.builtin.command:
+    cmd: k3s kubectl get pods -n {{ monitoring_namespace }} -o wide
+  changed_when: false
+  register: pods_output
+
+- name: Статус мониторинга
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "Мониторинг установлен и работает!"
+      - "Grafana: http://10.0.1.33:{{ monitoring_grafana_nodeport }}"
+      - "Логин/пароль: admin/admin"
+      - "Импортируй дашборд Node Exporter Full (ID: 1860)"
+      - ""
+      - "Поды:"
+      - "{{ pods_output.stdout_lines }}"
+      - "=========================================="

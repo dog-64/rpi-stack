@@ -1,0 +1,11 @@
+---
+# Версия Node Exporter
+node_exporter_version: "1.8.2"
+node_exporter_arch: "linux-arm64"  # или linux-amd64 для x86
+
+# Пользователь запуска
+node_exporter_user: root
+node_exporter_group: root
+
+# Порт
+node_exporter_port: 9100

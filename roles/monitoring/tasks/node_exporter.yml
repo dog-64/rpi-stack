@@ -1,0 +1,11 @@
+---
+- name: Создать манифест Node Exporter
+  ansible.builtin.template:
+    src: node-exporter.yml.j2
+    dest: /tmp/monitoring-node-exporter.yml
+    mode: '0644'
+
+- name: Применить Node Exporter DaemonSet и Service
+  ansible.builtin.command:
+    cmd: k3s kubectl apply -f /tmp/monitoring-node-exporter.yml
+  changed_when: true
