@@ -67,14 +67,14 @@ roles/
 
 ---
 
-## [ ] Установить Mimir на сервер
+## [X] Установить Mimir на сервер
 
 **Описание:** Нужно сделать мониторинг состояния узлов кластера на Mimir + Grafana
 
 **Чек-лист:**
-- [ ] установка mimir to server as k8s app
-- [ ] grafana sinstall to server as k8s app
-- [ ] node-exporter to server and nodes as k8s app
+- [X] установка mimir to server as k8s app
+- [X] grafana sinstall to server as k8s app
+- [X] node-exporter to server and nodes as k8s app
 
 ---
 
@@ -89,7 +89,7 @@ roles/
 
 ---
 
-## [ ] Поппробовать PVC on NFS
+## [ ] Попробовать PVC on NFS
 
 **Описание:** Краткое описание
 
