@@ -137,7 +137,7 @@ k3s-server: ## Установить k3s server (control-plane)
 
 k3s-agents: ## Установить k3s agents (workers)
 	@echo "$(GREEN)Установка k3s agents...$(NC)"
-	ansible-playbook playbooks/k3s-install.yml --limit k3s_agent
+	ansible-playbook playbooks/k3s-install.yml --limit k3s_agent -e k3s_force_install=true
 
 k3s-status: ## Статус k3s кластера
 	@echo "$(GREEN)Статус k3s cluster...$(NC)"

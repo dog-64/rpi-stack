@@ -170,10 +170,32 @@ data:
         },
         {
           "datasource": "Mimir",
+          "description": "CPU temperature from thermal zones",
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "thresholds"
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "tooltip": false,
+                  "viz": false,
+                  "legend": false
+                },
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false
               },
               "mappings": [],
               "thresholds": {
@@ -184,12 +206,18 @@ data:
                     "value": null
                   },
                   {
+                    "color": "yellow",
+                    "value": 60
+                  },
+                  {
                     "color": "red",
-                    "value": 80
+                    "value": 75
                   }
                 ]
               },
-              "unit": "celsius"
+              "unit": "celsius",
+              "min": 30,
+              "max": 85
             },
             "overrides": []
           },
@@ -201,27 +229,26 @@ data:
           },
           "id": 4,
           "options": {
-            "orientation": "auto",
-            "reduceOptions": {
-              "values": false,
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": ""
+            "legend": {
+              "calcs": ["lastNotNull", "max"],
+              "displayMode": "table",
+              "placement": "bottom"
             },
-            "showThresholdLabels": false,
-            "showThresholdMarkers": true
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           },
           "pluginVersion": "11.2.0",
           "targets": [
             {
               "datasource": "Mimir",
-              "expr": "node_hwmon_temp_celsius",
-              "legendFormat": "{% raw %}{{instance}}{% endraw %} - {% raw %}{{chip}}{% endraw %}"
+              "expr": "node_thermal_zone_temp{type=\"cpu-thermal\"}",
+              "legendFormat": "{% raw %}{{instance}}{% endraw %}"
             }
           ],
-          "title": "Temperature",
-          "type": "gauge"
+          "title": "CPU Temperature",
+          "type": "timeseries"
         },
         {
           "datasource": "Mimir",
@@ -292,6 +319,136 @@ data:
           ],
           "title": "Disk Available",
           "type": "timeseries"
+        },
+        {
+          "datasource": "Mimir",
+          "description": "Network receive/transmit rate by node",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "tooltip": false,
+                  "viz": false,
+                  "legend": false
+                },
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "Bps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          },
+          "id": 6,
+          "options": {
+            "legend": {
+              "calcs": ["lastNotNull"],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.2.0",
+          "targets": [
+            {
+              "datasource": "Mimir",
+              "expr": "rate(node_network_receive_bytes_total{device=~\"eth.*|en.*|end.*|wlan.*\"}[5m])",
+              "legendFormat": "{% raw %}{{instance}}{% endraw %} recv"
+            },
+            {
+              "datasource": "Mimir",
+              "expr": "rate(node_network_transmit_bytes_total{device=~\"eth.*|en.*|end.*|wlan.*\"}[5m])",
+              "legendFormat": "{% raw %}{{instance}}{% endraw %} send"
+            }
+          ],
+          "title": "Network I/O",
+          "type": "timeseries"
+        },
+        {
+          "datasource": "Mimir",
+          "description": "System uptime per node",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          },
+          "id": 7,
+          "options": {
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": false,
+            "text": {}
+          },
+          "pluginVersion": "11.2.0",
+          "targets": [
+            {
+              "datasource": "Mimir",
+              "expr": "time() - node_boot_time_seconds",
+              "legendFormat": "{% raw %}{{instance}}{% endraw %}"
+            }
+          ],
+          "title": "Uptime",
+          "type": "gauge"
         }
       ],
       "schemaVersion": 27,

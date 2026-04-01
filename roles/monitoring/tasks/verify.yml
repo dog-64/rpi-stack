@@ -32,13 +32,13 @@
     cmd: >
       k3s kubectl get pods -n {{ monitoring_namespace }}
       -l 'app in (node-exporter,prometheus,mimir,grafana)'
-      --field-selector=status.phase=Running
-      -o name | wc -l
-  register: running_pods_count
+      --field-selector=status.phase!=Running
+      -o name
+  register: non_running_pods
   changed_when: false
   retries: 10
   delay: 5
-  until: running_pods_count.stdout | int >= 6
+  until: non_running_pods.stdout | length == 0
 
 - name: Показать все поды мониторинга
   ansible.builtin.command:
